@@ -1,3 +1,6 @@
+<img width="1659" height="965" alt="image" src="https://github.com/user-attachments/assets/a645c8ad-dac9-4929-9f22-5732395262ef" />
+
+
 # S3 Explorer (WPF, .NET 8)
 
 Trình duyệt metadata S3 kiểu Windows Explorer. Duyệt danh sách object (tên, dung lượng, loại, ngày sửa đổi, storage class) từ cache; tải file/thư mục về máy và xóa file/thư mục trên S3.
