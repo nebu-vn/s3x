@@ -7,8 +7,8 @@ using System.Windows.Media.Imaging;
 namespace S3Explorer.Services;
 
 /// <summary>
-/// Lấy tên loại file và icon của Windows theo phần mở rộng (giống Explorer),
-/// không cần file tồn tại trên đĩa. Cache theo extension.
+/// Gets the Windows file type name and icon for an extension (like Explorer),
+/// without the file needing to exist on disk. Cached per extension.
 /// </summary>
 public static class ShellInfo
 {
@@ -44,7 +44,7 @@ public static class ShellInfo
 
         bool isFolder = key == FolderKey;
         string fake = isFolder ? "folder" : "file" + key;
-        string type = isFolder ? "Thư mục" : key.Length > 0 ? $"Tệp {key.TrimStart('.').ToUpperInvariant()}" : "Tệp";
+        string type = isFolder ? "Folder" : key.Length > 0 ? $"{key.TrimStart('.').ToUpperInvariant()} File" : "File";
         ImageSource? icon = null;
 
         try
@@ -66,7 +66,7 @@ public static class ShellInfo
         }
         catch
         {
-            // giữ giá trị mặc định
+            // keep the defaults
         }
 
         return Cache[key] = (type, icon);

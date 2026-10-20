@@ -5,7 +5,7 @@ namespace S3Explorer.Services;
 
 public sealed record ScanProgress(long Files, long Bytes);
 
-/// <summary>Quét metadata từ S3 và ghi đè cache của một cấu hình.</summary>
+/// <summary>Scan metadata from S3 and overwrite a profile's cache.</summary>
 public static class Scanner
 {
     public static async Task<ScanInfo> ScanAsync(S3Profile profile, CacheStore cache,

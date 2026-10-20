@@ -17,14 +17,14 @@
         <!-- ===================== Sidebar ===================== -->
         <Border Grid.Column="0" Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="10,14,10,10">
-                <TextBlock DockPanel.Dock="Top" Text="KẾT NỐI S3" FontSize="11" FontWeight="SemiBold"
+                <TextBlock DockPanel.Dock="Top" Text="S3 CONNECTIONS" FontSize="11" FontWeight="SemiBold"
                            Foreground="{StaticResource TertiaryBrush}" Margin="8,0,0,8" />
 
                 <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,0" Margin="0,8,0,0">
                     <StackPanel Orientation="Horizontal">
-                        <Button Style="{StaticResource ToolButton}" Content="&#xE710;" ToolTip="Thêm kết nối" Click="AddProfile_Click" />
-                        <Button x:Name="EditButton" Style="{StaticResource ToolButton}" Content="&#xE70F;" Margin="2,0,0,0" ToolTip="Sửa kết nối" Click="EditProfile_Click" />
-                        <Button x:Name="DeleteButton" Style="{StaticResource ToolButton}" Content="&#xE738;" Margin="2,0,0,0" ToolTip="Xóa kết nối" Click="DeleteProfile_Click" />
+                        <Button Style="{StaticResource ToolButton}" Content="&#xE710;" ToolTip="Add connection" Click="AddProfile_Click" />
+                        <Button x:Name="EditButton" Style="{StaticResource ToolButton}" Content="&#xE70F;" Margin="2,0,0,0" ToolTip="Edit connection" Click="EditProfile_Click" />
+                        <Button x:Name="DeleteButton" Style="{StaticResource ToolButton}" Content="&#xE738;" Margin="2,0,0,0" ToolTip="Delete connection" Click="DeleteProfile_Click" />
                     </StackPanel>
                 </Border>
 
@@ -49,7 +49,7 @@
                                                     <Setter Property="FontWeight" Value="SemiBold" />
                                                     <Setter Property="Foreground" Value="#3A3A3C" />
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Summary}" Value="Chưa quét">
+                                                        <DataTrigger Binding="{Binding Summary}" Value="Not scanned">
                                                             <Setter Property="FontWeight" Value="Normal" />
                                                             <Setter Property="Foreground" Value="#8E8E93" />
                                                         </DataTrigger>
@@ -69,7 +69,7 @@
 
         <GridSplitter Grid.Column="1" Width="4" Margin="-2,0" HorizontalAlignment="Center" Background="Transparent" />
 
-        <!-- ===================== Nội dung ===================== -->
+        <!-- ===================== Content ===================== -->
         <DockPanel Grid.Column="2">
             <!-- Toolbar -->
             <Border DockPanel.Dock="Top" Padding="10,10,12,10" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
@@ -85,9 +85,9 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Button x:Name="BackButton" Grid.Column="0" Style="{StaticResource ToolButton}" Content="&#xE76B;" FontSize="12"
-                            ToolTip="Quay lại (Alt+←)" Click="Back_Click" />
+                            ToolTip="Back (Alt+←)" Click="Back_Click" />
                     <Button x:Name="UpButton" Grid.Column="1" Style="{StaticResource ToolButton}" Content="&#xE70E;" FontSize="12" Margin="2,0,10,0"
-                            ToolTip="Lên thư mục cha (Backspace)" Click="Up_Click" />
+                            ToolTip="Up to parent folder (Backspace)" Click="Up_Click" />
                     <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,0,10,0">
                         <TextBlock x:Name="FolderTitle" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                         <TextBox x:Name="PathBox" IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0"
@@ -101,13 +101,13 @@
                         </TextBox>
                     </StackPanel>
 
-                    <!-- Ô tìm kiếm -->
+                    <!-- Search box -->
                     <Grid Grid.Column="3">
                         <TextBox x:Name="FilterBox" Padding="26,4,8,4" Background="#F2F2F5" BorderBrush="#E3E3E8"
                                  TextChanged="FilterBox_TextChanged" />
                         <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12"
                                    Foreground="{StaticResource TertiaryBrush}" Margin="9,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" />
-                        <TextBlock Text="Tìm theo tên" Foreground="{StaticResource TertiaryBrush}" Margin="28,0,0,0"
+                        <TextBlock Text="Search by name" Foreground="{StaticResource TertiaryBrush}" Margin="28,0,0,0"
                                    VerticalAlignment="Center" IsHitTestVisible="False">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
@@ -123,21 +123,21 @@
                     </Grid>
 
                     <Button x:Name="DownloadFileButton" Grid.Column="4" Style="{StaticResource ToolButton}" Content="&#xE896;"
-                            Margin="8,0,0,0" ToolTip="Tải về thư mục Downloads (double-click file)" Click="Download_Click" />
+                            Margin="8,0,0,0" ToolTip="Download to Downloads folder (double-click file)" Click="Download_Click" />
                     <Button x:Name="DeleteFileButton" Grid.Column="5" Style="{StaticResource ToolButton}" Content="&#xE74D;"
-                            Margin="2,0,0,0" ToolTip="Xóa khỏi S3 (Delete)" Click="DeleteItems_Click" />
+                            Margin="2,0,0,0" ToolTip="Delete from S3 (Delete)" Click="DeleteItems_Click" />
                     <Button x:Name="RescanButton" Grid.Column="6" Margin="8,0,0,0" Click="Rescan_Click"
-                            ToolTip="Tải lại danh sách metadata từ S3 và cập nhật cache (F5)">
+                            ToolTip="Reload metadata listing from S3 and update the cache (F5)">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
-                            <TextBlock Text="Quét lại" VerticalAlignment="Center" />
+                            <TextBlock Text="Rescan" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
-                    <Button x:Name="CancelScanButton" Grid.Column="7" Content="Hủy" Margin="6,0,0,0" Visibility="Collapsed" Click="CancelScan_Click" />
+                    <Button x:Name="CancelScanButton" Grid.Column="7" Content="Cancel" Margin="6,0,0,0" Visibility="Collapsed" Click="CancelScan_Click" />
                 </Grid>
             </Border>
 
-            <!-- Tiến trình quét -->
+            <!-- Scan progress -->
             <Border x:Name="ProgressPanel" DockPanel.Dock="Top" Background="#F2F7FF" Padding="12,7"
                     BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Visibility="Collapsed">
                 <DockPanel>
@@ -147,19 +147,19 @@
                 </DockPanel>
             </Border>
 
-            <!-- Thông báo sau khi tải / xóa -->
+            <!-- Notice after download / delete -->
             <Border x:Name="NoticePanel" DockPanel.Dock="Top" Padding="12,6" Background="#EFF8F1"
                     BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Visibility="Collapsed">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Style="{StaticResource ToolButton}" Content="&#xE711;" FontSize="10"
-                            MinHeight="22" MinWidth="24" Padding="4,2" ToolTip="Đóng" Click="CloseNotice_Click" />
-                    <Button x:Name="NoticeOpenButton" DockPanel.Dock="Right" Content="Hiện trong thư mục" MinHeight="24"
+                            MinHeight="22" MinWidth="24" Padding="4,2" ToolTip="Close" Click="CloseNotice_Click" />
+                    <Button x:Name="NoticeOpenButton" DockPanel.Dock="Right" Content="Show in folder" MinHeight="24"
                             Padding="10,2" Margin="8,0,6,0" Click="NoticeOpen_Click" />
                     <TextBlock x:Name="NoticeText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
             </Border>
 
-            <!-- Thanh trạng thái -->
+            <!-- Status bar -->
             <Border DockPanel.Dock="Bottom" Background="#FAFAFB" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="12,5">
                 <DockPanel>
                     <TextBlock x:Name="CacheStatus" DockPanel.Dock="Right" Foreground="{StaticResource TertiaryBrush}" FontSize="11.5" />
@@ -170,7 +170,7 @@
                 </DockPanel>
             </Border>
 
-            <!-- Thanh đường dẫn (bấm để nhảy thư mục) -->
+            <!-- Path bar (click to jump to a folder) -->
             <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="8,3">
                 <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
                     <ItemsControl x:Name="PathBar">
@@ -199,7 +199,7 @@
                 </ScrollViewer>
             </Border>
 
-            <!-- Danh sách file -->
+            <!-- File list -->
             <Grid>
                 <ListView x:Name="FileList" BorderThickness="0" Background="White" Padding="6,0"
                           AlternationCount="2" ItemContainerStyle="{StaticResource FileRow}"
@@ -210,31 +210,31 @@
                           SelectionChanged="FileList_SelectionChanged">
                     <ListView.ContextMenu>
                         <ContextMenu Opened="FileMenu_Opened">
-                            <MenuItem x:Name="OpenFolderMenu" Header="Mở thư mục" Click="OpenFolder_Click" />
-                            <MenuItem x:Name="OpenLocalMenu" Header="Mở file đã tải" Click="OpenLocal_Click" />
-                            <MenuItem x:Name="RevealLocalMenu" Header="Hiện file đã tải trong thư mục" Click="RevealLocal_Click" />
-                            <MenuItem Header="Tải về Downloads" Click="Download_Click" />
-                            <MenuItem Header="Tải về thư mục khác…" Click="DownloadTo_Click" />
+                            <MenuItem x:Name="OpenFolderMenu" Header="Open folder" Click="OpenFolder_Click" />
+                            <MenuItem x:Name="OpenLocalMenu" Header="Open downloaded file" Click="OpenLocal_Click" />
+                            <MenuItem x:Name="RevealLocalMenu" Header="Show downloaded file in folder" Click="RevealLocal_Click" />
+                            <MenuItem Header="Download to Downloads" Click="Download_Click" />
+                            <MenuItem Header="Download to another folder…" Click="DownloadTo_Click" />
                             <Separator />
-                            <MenuItem Header="Sao chép tên" Click="CopyName_Click" />
-                            <MenuItem Header="Sao chép key" Click="CopyKey_Click" />
-                            <MenuItem Header="Sao chép đường dẫn s3://" Click="CopyUri_Click" />
+                            <MenuItem Header="Copy name" Click="CopyName_Click" />
+                            <MenuItem Header="Copy key" Click="CopyKey_Click" />
+                            <MenuItem Header="Copy s3:// path" Click="CopyUri_Click" />
                             <Separator />
-                            <MenuItem Header="Xóa khỏi S3…" Click="DeleteItems_Click" />
+                            <MenuItem Header="Delete from S3…" Click="DeleteItems_Click" />
                         </ContextMenu>
                     </ListView.ContextMenu>
                     <ListView.View>
                         <GridView>
                             <GridViewColumn Width="380">
                                 <GridViewColumn.Header>
-                                    <GridViewColumnHeader Content="Tên" Tag="Name" Click="Header_Click" />
+                                    <GridViewColumnHeader Content="Name" Tag="Name" Click="Header_Click" />
                                 </GridViewColumn.Header>
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" ToolTip="{Binding DownloadTip}">
                                             <Grid Width="20" Height="20" Margin="0,0,8,0">
                                                 <Image Source="{Binding Icon}" />
-                                                <!-- Huy hiệu "đã tải về máy" -->
+                                                <!-- "Downloaded locally" badge -->
                                                 <Border x:Name="DownloadedBadge" Visibility="Collapsed" Width="12" Height="12" CornerRadius="6"
                                                         Background="#34C759" BorderBrush="White" BorderThickness="1"
                                                         HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-3,-2">
@@ -261,7 +261,7 @@
                             </GridViewColumn>
                             <GridViewColumn Width="140">
                                 <GridViewColumn.Header>
-                                    <GridViewColumnHeader Content="Ngày sửa đổi" Tag="Modified" Click="Header_Click" />
+                                    <GridViewColumnHeader Content="Date modified" Tag="Modified" Click="Header_Click" />
                                 </GridViewColumn.Header>
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
@@ -271,7 +271,7 @@
                             </GridViewColumn>
                             <GridViewColumn Width="100">
                                 <GridViewColumn.Header>
-                                    <GridViewColumnHeader Content="Kích thước" Tag="Size" Click="Header_Click" HorizontalContentAlignment="Right" />
+                                    <GridViewColumnHeader Content="Size" Tag="Size" Click="Header_Click" HorizontalContentAlignment="Right" />
                                 </GridViewColumn.Header>
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
@@ -281,7 +281,7 @@
                             </GridViewColumn>
                             <GridViewColumn Width="80">
                                 <GridViewColumn.Header>
-                                    <GridViewColumnHeader Content="Số file" Tag="Count" Click="Header_Click" HorizontalContentAlignment="Right" />
+                                    <GridViewColumnHeader Content="Files" Tag="Count" Click="Header_Click" HorizontalContentAlignment="Right" />
                                 </GridViewColumn.Header>
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
@@ -291,7 +291,7 @@
                             </GridViewColumn>
                             <GridViewColumn Width="160">
                                 <GridViewColumn.Header>
-                                    <GridViewColumnHeader Content="Loại" Tag="Type" Click="Header_Click" />
+                                    <GridViewColumnHeader Content="Type" Tag="Type" Click="Header_Click" />
                                 </GridViewColumn.Header>
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
@@ -313,7 +313,7 @@
                     </ListView.View>
                 </ListView>
 
-                <!-- Trạng thái trống -->
+                <!-- Empty state -->
                 <StackPanel x:Name="EmptyPanel" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Margin="40">
                     <Image Source="{x:Static svc:MacIcons.Folder}" Width="76" Height="76" Opacity="0.45" />
                     <TextBlock x:Name="EmptyText" Foreground="{StaticResource TertiaryBrush}" FontSize="14"

@@ -4,7 +4,7 @@ using S3Explorer.Models;
 
 namespace S3Explorer.Services;
 
-/// <summary>Lưu danh sách cấu hình S3 vào %LocalAppData%\S3Explorer\profiles.json.</summary>
+/// <summary>Persists the S3 profile list to %LocalAppData%\S3Explorer\profiles.json.</summary>
 public sealed class ProfileStore
 {
     public static string AppDataDir

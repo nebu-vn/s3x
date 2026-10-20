@@ -4,7 +4,7 @@
              StartupUri="MainWindow.xaml"
              DispatcherUnhandledException="App_DispatcherUnhandledException">
     <Application.Resources>
-        <!-- ===== Bảng màu kiểu macOS ===== -->
+        <!-- ===== macOS-style color palette ===== -->
         <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
         <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
         <SolidColorBrush x:Key="AccentBrush" Color="#007AFF" />
@@ -15,7 +15,7 @@
         <SolidColorBrush x:Key="SidebarBrush" Color="#F2F2F5" />
         <SolidColorBrush x:Key="ControlBorderBrush" Color="#D1D1D6" />
 
-        <!-- ===== Nút thường ===== -->
+        <!-- ===== Regular button ===== -->
         <Style TargetType="Button">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             <Setter Property="Background" Value="White" />
@@ -53,7 +53,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- Nút chính (xanh) -->
+        <!-- Primary button (blue) -->
         <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="#007AFF" />
             <Setter Property="BorderBrush" Value="#0068DB" />
@@ -68,7 +68,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- Nút icon trên thanh công cụ -->
+        <!-- Toolbar icon button -->
         <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -88,7 +88,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- ===== Ô nhập liệu bo góc, viền xanh khi focus ===== -->
+        <!-- ===== Rounded input, blue border on focus ===== -->
         <ControlTemplate x:Key="RoundedInputTemplate" TargetType="Control">
             <Grid>
                 <Border x:Name="Ring" CornerRadius="9" Margin="-3" BorderThickness="3"
@@ -133,7 +133,7 @@
             <Setter Property="Template" Value="{StaticResource RoundedInputTemplate}" />
         </Style>
 
-        <!-- ===== Sidebar item (bo góc, nền xám khi chọn) ===== -->
+        <!-- ===== Sidebar item (rounded, gray background when selected) ===== -->
         <Style x:Key="SidebarItem" TargetType="ListBoxItem">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -158,7 +158,7 @@
             </Setter>
         </Style>
 
-        <!-- ===== Dòng trong danh sách file (kiểu Finder) ===== -->
+        <!-- ===== File list row (Finder-style) ===== -->
         <Style x:Key="FileRow" TargetType="ListViewItem">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -197,7 +197,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- ===== Tiêu đề cột ===== -->
+        <!-- ===== Column header ===== -->
         <Style TargetType="GridViewColumnHeader">
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Foreground" Value="{StaticResource SecondaryBrush}" />
@@ -230,7 +230,7 @@
             </Setter>
         </Style>
 
-        <!-- ===== Context menu bo góc ===== -->
+        <!-- ===== Rounded context menu ===== -->
         <Style TargetType="ContextMenu">
             <Setter Property="Background" Value="White" />
             <Setter Property="Template">
@@ -274,7 +274,7 @@
             </Setter>
         </Style>
 
-        <!-- ===== Thanh cuộn mảnh kiểu macOS ===== -->
+        <!-- ===== Thin macOS-style scrollbar ===== -->
         <Style x:Key="ScrollThumb" TargetType="Thumb">
             <Setter Property="Template">
                 <Setter.Value>

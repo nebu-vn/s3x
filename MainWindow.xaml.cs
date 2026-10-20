@@ -27,8 +27,8 @@ public partial class MainWindow : Window
     private string _sortKey = "Name";
     private bool _sortAsc = true;
 
-    private CancellationTokenSource? _opCts;          // tải về / xóa
-    private string? _noticePath;                        // file/thư mục để "Hiện trong thư mục"
+    private CancellationTokenSource? _opCts;          // download / delete
+    private string? _noticePath;                        // file/folder for "Show in folder"
     private bool IsBusy => _scanCts != null || _opCts != null;
 
     private CancellationTokenSource? _scanCts;
@@ -52,19 +52,19 @@ public partial class MainWindow : Window
         if (_current == null) SetPath(null);
     }
 
-    private const string NoProfileText = "Chưa có kết nối S3 nào.\nBấm nút + ở góc dưới bên trái để thêm.";
+    private const string NoProfileText = "No S3 connections yet.\nClick the + button in the bottom-left corner to add one.";
 
-    // ===================== Cấu hình =====================
+    // ===================== Profiles =====================
 
     private void AddProfile_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new ProfileDialog(null) { Owner = this };
         if (dlg.ShowDialog() != true || dlg.Result == null) return;
 
-        dlg.Result.Summary = "Chưa quét";
+        dlg.Result.Summary = "Not scanned";
         _profiles.Add(dlg.Result);
         _profileStore.Save(_profiles);
-        ProfileList.SelectedItem = dlg.Result; // tự quét lần đầu
+        ProfileList.SelectedItem = dlg.Result; // auto-scans the first time
     }
 
     private void EditProfile_Click(object sender, RoutedEventArgs e)
@@ -72,7 +72,7 @@ public partial class MainWindow : Window
         if (ProfileList.SelectedItem is not S3Profile p) return;
         if (_scanning?.Id == p.Id)
         {
-            MessageBox.Show(this, "Cấu hình này đang được quét. Hãy hủy quét trước khi sửa.", "S3 Explorer");
+            MessageBox.Show(this, "This profile is being scanned. Cancel the scan before editing it.", "S3 Explorer");
             return;
         }
 
@@ -85,7 +85,7 @@ public partial class MainWindow : Window
 
         if (scopeChanged)
         {
-            _cache.DeleteProfile(p.Id); // bucket/prefix khác → cache cũ không còn đúng
+            _cache.DeleteProfile(p.Id); // different bucket/prefix → old cache no longer valid
             p.Summary = p.ScanTime = "";
         }
         ProfileList.Items.Refresh();
@@ -102,11 +102,11 @@ public partial class MainWindow : Window
         if (ProfileList.SelectedItem is not S3Profile p) return;
         if (_scanning?.Id == p.Id)
         {
-            MessageBox.Show(this, "Cấu hình này đang được quét. Hãy hủy quét trước khi xóa.", "S3 Explorer");
+            MessageBox.Show(this, "This profile is being scanned. Cancel the scan before deleting it.", "S3 Explorer");
             return;
         }
-        if (MessageBox.Show(this, $"Xóa cấu hình \"{p.Name}\" và cache của nó?\n(Không ảnh hưởng dữ liệu trên S3)",
-                "Xác nhận", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (MessageBox.Show(this, $"Delete profile \"{p.Name}\" and its cache?\n(Data on S3 is not affected)",
+                "Confirm", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
         _cache.DeleteProfile(p.Id);
         _profiles.Remove(p);
@@ -131,7 +131,7 @@ public partial class MainWindow : Window
         await OpenProfileAsync(p);
     }
 
-    /// <summary>Mở cấu hình: có cache thì hiển thị ngay, chưa có thì quét lần đầu.</summary>
+    /// <summary>Open a profile: show it immediately if cached, otherwise run the first scan.</summary>
     private async Task OpenProfileAsync(S3Profile p)
     {
         _current = p;
@@ -149,15 +149,15 @@ public partial class MainWindow : Window
 
         if (_scanCts != null)
         {
-            ShowEmpty($"Chưa có dữ liệu cache cho \"{p.Name}\".\nĐang quét \"{_scanning?.Name}\" — bấm \"Quét lại từ S3\" khi xong.");
+            ShowEmpty($"No cached data for \"{p.Name}\" yet.\nScanning \"{_scanning?.Name}\" — click \"Rescan\" when it finishes.");
             return;
         }
 
-        ShowEmpty("Đang tải danh sách lần đầu…");
+        ShowEmpty("Loading listing for the first time…");
         await ScanAsync(p);
     }
 
-    // ===================== Quét S3 =====================
+    // ===================== S3 scan =====================
 
     private async void Rescan_Click(object sender, RoutedEventArgs e)
     {
@@ -173,10 +173,10 @@ public partial class MainWindow : Window
         _scanCts = new CancellationTokenSource();
         _scanning = p;
         SetScanning(true);
-        ProgressText.Text = $"Đang quét {p.Name}…";
+        ProgressText.Text = $"Scanning {p.Name}…";
 
         var progress = new Progress<ScanProgress>(sp =>
-            ProgressText.Text = $"Đang quét {p.Name}: {sp.Files:N0} file · {FormatUtil.Size(sp.Bytes)}");
+            ProgressText.Text = $"Scanning {p.Name}: {sp.Files:N0} files · {FormatUtil.Size(sp.Bytes)}");
 
         try
         {
@@ -194,13 +194,13 @@ public partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             if (_current?.Id == p.Id && _cache.GetScanInfo(p.Id) == null)
-                ShowEmpty("Đã hủy quét. Bấm \"Quét lại từ S3\" để thử lại.");
+                ShowEmpty("Scan cancelled. Click \"Rescan\" to try again.");
         }
         catch (Exception ex)
         {
             if (_current?.Id == p.Id && _cache.GetScanInfo(p.Id) == null)
-                ShowEmpty("Không tải được danh sách. Kiểm tra lại cấu hình.");
-            MessageBox.Show(this, $"Lỗi khi quét \"{p.Name}\":\n{ex.Message}", "Lỗi S3",
+                ShowEmpty("Could not load the listing. Check the profile settings.");
+            MessageBox.Show(this, $"Error scanning \"{p.Name}\":\n{ex.Message}", "S3 error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -245,19 +245,19 @@ public partial class MainWindow : Window
         if (_view.Count > 0) FileList.ScrollIntoView(_view.GetItemAt(0));
 
         SetPath(path);
-        ShowEmpty(entries.Count == 0 ? "Thư mục trống." : null);
+        ShowEmpty(entries.Count == 0 ? "This folder is empty." : null);
 
         // Status bar
         int folders = entries.Count(x => x.IsFolder);
         int files = entries.Count - folders;
         long directSize = entries.Where(x => !x.IsFolder).Sum(x => x.Size);
         var agg = _cache.GetFolder(_current.Id, path);
-        FolderStatus.Text = $"{folders:N0} thư mục, {files:N0} file ({FormatUtil.Size(directSize)})" +
-                            (agg != null ? $"   •   Tổng gồm thư mục con: {agg.FileCount:N0} file, {FormatUtil.Size(agg.TotalSize)}" : "");
+        FolderStatus.Text = $"{folders:N0} folders, {files:N0} files ({FormatUtil.Size(directSize)})" +
+                            (agg != null ? $"   •   Total incl. subfolders: {agg.FileCount:N0} files, {FormatUtil.Size(agg.TotalSize)}" : "");
 
         var scan = _cache.GetScanInfo(_current.Id);
         CacheStatus.Text = scan == null ? "" :
-            $"Cache: quét lúc {scan.ScannedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm} (mất {FormatUtil.Duration(scan.DurationMs)})";
+            $"Cache: scanned {scan.ScannedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm} (took {FormatUtil.Duration(scan.DurationMs)})";
 
         UpdateSelectionStatus();
         UpdateButtons();
@@ -282,8 +282,8 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> HeaderTitles = new()
     {
-        ["Name"] = "Tên", ["Modified"] = "Ngày sửa đổi", ["Size"] = "Kích thước",
-        ["Count"] = "Số file", ["Type"] = "Loại", ["Storage"] = "Storage class"
+        ["Name"] = "Name", ["Modified"] = "Date modified", ["Size"] = "Size",
+        ["Count"] = "Files", ["Type"] = "Type", ["Storage"] = "Storage class"
     };
 
     private void UpdateSortGlyphs()
@@ -294,11 +294,11 @@ public partial class MainWindow : Window
                 h.Content = k == _sortKey ? $"{title}  {(_sortAsc ? "\u2191" : "\u2193")}" : title;
     }
 
-    // ===================== Thanh đường dẫn =====================
+    // ===================== Path bar =====================
 
     public sealed record PathSegment(string Name, string Path, ImageSource Icon, Visibility ChevronVisibility);
 
-    /// <summary>Cập nhật tiêu đề, đường dẫn s3:// và thanh breadcrumb. path = null khi không có cấu hình.</summary>
+    /// <summary>Update the title, s3:// path and breadcrumb bar. path = null when there is no profile.</summary>
     private void SetPath(string? path)
     {
         if (_current == null || path == null)
@@ -350,7 +350,7 @@ public partial class MainWindow : Window
         }
         else if (FileList.SelectedItem is S3Entry { IsFolder: false } file)
         {
-            // Đã tải rồi → mở bản trên máy; chỉ tải các file chưa có
+            // Already downloaded → open the local copy; only download files not yet present
             var files = SelectedEntries().Where(x => !x.IsFolder).ToList();
             if (files.Count == 1 && TryOpenLocal(file)) return;
             var missing = files.Where(x => !TryKeepLocal(x)).ToList();
@@ -370,8 +370,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Bản tải về còn dùng được không; nếu đã bị xóa/sửa thì bỏ đánh dấu.
-    /// Chưa có bản ghi mà Downloads đã có file cùng tên, cùng dung lượng (tải từ trước) thì nhận luôn file đó.
+    /// Whether the downloaded copy is still usable; if it was deleted/modified, clear the mark.
+    /// If there is no record but Downloads already has a file with the same name and size (downloaded earlier), adopt that file.
     /// </summary>
     private bool TryKeepLocal(S3Entry en)
     {
@@ -399,7 +399,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowNotice($"Không mở được \"{en.LocalPath}\": {ex.Message}", en.LocalPath, error: true);
+            ShowNotice($"Could not open \"{en.LocalPath}\": {ex.Message}", en.LocalPath, error: true);
         }
         return true;
     }
@@ -430,10 +430,10 @@ public partial class MainWindow : Window
     {
         var sel = FileList.SelectedItems.Cast<S3Entry>().ToList();
         SelectionStatus.Text = sel.Count == 0 ? "" :
-            $"Đã chọn {sel.Count:N0} mục — {FormatUtil.Size(sel.Sum(x => x.Size))}";
+            $"{sel.Count:N0} selected — {FormatUtil.Size(sel.Sum(x => x.Size))}";
     }
 
-    // ===================== Tải về / Xóa =====================
+    // ===================== Download / Delete =====================
 
     private List<S3Entry> SelectedEntries() => FileList.SelectedItems.Cast<S3Entry>().ToList();
 
@@ -449,7 +449,7 @@ public partial class MainWindow : Window
     {
         var items = SelectedEntries();
         if (items.Count == 0) return;
-        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Chọn thư mục lưu", InitialDirectory = DefaultDownloadDir() };
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Choose destination folder", InitialDirectory = DefaultDownloadDir() };
         if (dlg.ShowDialog(this) == true) _ = DownloadAsync(items, dlg.FolderName);
     }
 
@@ -458,7 +458,7 @@ public partial class MainWindow : Window
     private async Task DownloadAsync(IReadOnlyList<S3Entry> items, string destDir)
     {
         if (_current == null || items.Count == 0) return;
-        if (IsBusy) { ShowNotice("Đang có tác vụ khác chạy — vui lòng đợi hoặc bấm Hủy.", null, error: true); return; }
+        if (IsBusy) { ShowNotice("Another operation is running — please wait or click Cancel.", null, error: true); return; }
 
         var p = _current;
         var bucket = p.Bucket.Trim();
@@ -466,14 +466,14 @@ public partial class MainWindow : Window
         _opCts = new CancellationTokenSource();
         var ct = _opCts.Token;
         HideNotice();
-        ProgressText.Text = "Đang chuẩn bị tải…";
+        ProgressText.Text = "Preparing download…";
         SetScanning(true);
 
         long doneBytes = 0, totalBytes = 0;
         int doneFiles = 0, totalFiles = 0;
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        timer.Tick += (_, _) => ProgressText.Text = totalFiles == 0 ? "Đang liệt kê file…" :
-            $"Đang tải {Volatile.Read(ref doneFiles):N0}/{totalFiles:N0} file · " +
+        timer.Tick += (_, _) => ProgressText.Text = totalFiles == 0 ? "Listing files…" :
+            $"Downloading {Volatile.Read(ref doneFiles):N0}/{totalFiles:N0} files · " +
             $"{FormatUtil.Size(Interlocked.Read(ref doneBytes))} / {FormatUtil.Size(totalBytes)}";
         timer.Start();
 
@@ -526,17 +526,17 @@ public partial class MainWindow : Window
             });
 
             if (failed.Count == 0)
-                ShowNotice($"Đã tải {doneFiles:N0} file ({FormatUtil.Size(doneBytes)}) về {destDir}", reveal);
+                ShowNotice($"Downloaded {doneFiles:N0} files ({FormatUtil.Size(doneBytes)}) to {destDir}", reveal);
             else
-                ShowNotice($"Tải xong {doneFiles:N0}/{totalFiles:N0} file — {failed.Count:N0} file lỗi. Lỗi đầu tiên: {failed[0]}", reveal, error: true);
+                ShowNotice($"Downloaded {doneFiles:N0}/{totalFiles:N0} files — {failed.Count:N0} failed. First error: {failed[0]}", reveal, error: true);
         }
         catch (OperationCanceledException)
         {
-            ShowNotice($"Đã hủy tải ({doneFiles:N0}/{totalFiles:N0} file đã xong).", reveal, error: true);
+            ShowNotice($"Download cancelled ({doneFiles:N0}/{totalFiles:N0} files completed).", reveal, error: true);
         }
         catch (Exception ex)
         {
-            ShowNotice("Lỗi khi tải: " + ex.Message, null, error: true);
+            ShowNotice("Download error: " + ex.Message, null, error: true);
         }
         finally
         {
@@ -548,12 +548,12 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Ghi nhớ file đã tải và cập nhật đánh dấu trên các dòng đang hiển thị.</summary>
+    /// <summary>Remember downloaded files and update the marks on the rows currently shown.</summary>
     private void MarkDownloaded(S3Profile p, List<DownloadRecord> records)
     {
         if (records.Count == 0) return;
         try { _cache.RecordDownloads(p.Id, records); }
-        catch { /* chỉ mất đánh dấu, file vẫn đã tải */ }
+        catch { /* only the mark is lost, the file is still downloaded */ }
 
         if (_current?.Id != p.Id || _view == null) return;
         var byKey = records.ToDictionary(r => r.Key, r => r.LocalPath, StringComparer.Ordinal);
@@ -567,16 +567,16 @@ public partial class MainWindow : Window
         if (_current == null) return;
         var items = SelectedEntries();
         if (items.Count == 0) return;
-        if (IsBusy) { ShowNotice("Đang có tác vụ khác chạy — vui lòng đợi hoặc bấm Hủy.", null, error: true); return; }
+        if (IsBusy) { ShowNotice("Another operation is running — please wait or click Cancel.", null, error: true); return; }
 
         long files = items.Sum(x => x.IsFolder ? x.FileCount : 1);
         long size = items.Sum(x => x.Size);
         string what = items.Count == 1
-            ? (items[0].IsFolder ? $"thư mục \"{items[0].Name}\" ({files:N0} file bên trong)" : $"\"{items[0].Name}\"")
-            : $"{items.Count:N0} mục ({files:N0} file)";
+            ? (items[0].IsFolder ? $"folder \"{items[0].Name}\" ({files:N0} files inside)" : $"\"{items[0].Name}\"")
+            : $"{items.Count:N0} items ({files:N0} files)";
         if (MessageBox.Show(this,
-                $"Xóa vĩnh viễn {what} — {FormatUtil.Size(size)} khỏi S3?\n\nBucket: {_current.Bucket}\nThao tác này KHÔNG thể hoàn tác.",
-                "Xác nhận xóa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+                $"Permanently delete {what} — {FormatUtil.Size(size)} from S3?\n\nBucket: {_current.Bucket}\nThis action CANNOT be undone.",
+                "Confirm delete", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
             return;
 
         var p = _current;
@@ -585,12 +585,12 @@ public partial class MainWindow : Window
         _opCts = new CancellationTokenSource();
         var ct = _opCts.Token;
         HideNotice();
-        ProgressText.Text = "Đang liệt kê object cần xóa…";
+        ProgressText.Text = "Listing objects to delete…";
         SetScanning(true);
 
         int deleted = 0, total = 0;
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        timer.Tick += (_, _) => { if (total > 0) ProgressText.Text = $"Đang xóa {Volatile.Read(ref deleted):N0}/{total:N0} object…"; };
+        timer.Tick += (_, _) => { if (total > 0) ProgressText.Text = $"Deleting {Volatile.Read(ref deleted):N0}/{total:N0} objects…"; };
         timer.Start();
 
         try
@@ -605,34 +605,34 @@ public partial class MainWindow : Window
                     if (!en.IsFolder) { keys.Add(full); continue; }
                     await foreach (var page in S3Service.ListAllAsync(client, bucket, full, ct))
                         keys.AddRange(page.Select(o => o.Key));
-                    if (!keys.Contains(full)) keys.Add(full); // folder marker (nếu có)
+                    if (!keys.Contains(full)) keys.Add(full); // folder marker (if any)
                 }
                 Volatile.Write(ref total, keys.Count);
 
                 var bad = await S3Service.DeleteKeysAsync(client, bucket, keys, n => Volatile.Write(ref deleted, n), ct);
                 var badSet = new HashSet<string>(bad, StringComparer.Ordinal);
 
-                // Chỉ cập nhật cache cho phần đã xóa thành công
+                // Only update the cache for what was deleted successfully
                 var okFiles = items.Where(x => !x.IsFolder && !badSet.Contains(prefix + x.RelativePath)).Select(x => x.RelativePath).ToList();
                 var okFolders = items.Where(x => x.IsFolder && !bad.Any(k => k.StartsWith(prefix + x.RelativePath, StringComparison.Ordinal)))
                                      .Select(x => x.RelativePath).ToList();
                 _cache.ApplyDelete(p.Id, okFiles, okFolders);
-                // marker thư mục rỗng mà S3 không có thì không tính là lỗi
+                // a missing empty-folder marker on S3 doesn't count as an error
                 return bad.Where(k => !k.EndsWith('/')).ToList();
             });
 
             if (failed.Count == 0)
-                ShowNotice($"Đã xóa {what} khỏi S3.", null);
+                ShowNotice($"Deleted {what} from S3.", null);
             else
-                ShowNotice($"Không xóa được {failed.Count:N0} object (ví dụ: {failed[0]}). Kiểm tra quyền s3:DeleteObject rồi Quét lại.", null, error: true);
+                ShowNotice($"Could not delete {failed.Count:N0} objects (e.g. {failed[0]}). Check the s3:DeleteObject permission, then Rescan.", null, error: true);
         }
         catch (OperationCanceledException)
         {
-            ShowNotice("Đã hủy xóa giữa chừng — một phần có thể đã bị xóa. Bấm \"Quét lại\" để cập nhật.", null, error: true);
+            ShowNotice("Delete cancelled midway — some items may already be deleted. Click \"Rescan\" to refresh.", null, error: true);
         }
         catch (Exception ex)
         {
-            ShowNotice("Lỗi khi xóa: " + ex.Message, null, error: true);
+            ShowNotice("Delete error: " + ex.Message, null, error: true);
         }
         finally
         {
@@ -650,7 +650,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // ---------- Thông báo ----------
+    // ---------- Notices ----------
 
     private void ShowNotice(string text, string? revealPath, bool error = false)
     {
@@ -677,10 +677,10 @@ public partial class MainWindow : Window
             else if (Directory.Exists(_noticePath))
                 Process.Start("explorer.exe", $"\"{_noticePath}\"");
         }
-        catch { /* bỏ qua */ }
+        catch { /* ignore */ }
     }
 
-    // ---------- Đường dẫn cục bộ an toàn ----------
+    // ---------- Safe local paths ----------
 
     private static string SafeName(string name)
     {
@@ -689,7 +689,7 @@ public partial class MainWindow : Window
         return s.Length == 0 || s == ".." ? "_" : s;
     }
 
-    /// <summary>Ghép đường dẫn tương đối kiểu S3 vào root, chặn thoát ra ngoài root.</summary>
+    /// <summary>Join an S3-style relative path onto root, preventing escape outside root.</summary>
     private static string? SafeCombine(string root, string rel)
     {
         var parts = rel.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(SafeName).ToArray();
@@ -746,7 +746,7 @@ public partial class MainWindow : Window
     {
         if (FileList.SelectedItem is not S3Entry { IsFolder: false } en || !TryKeepLocal(en)) return;
         try { Process.Start("explorer.exe", $"/select,\"{en.LocalPath}\""); }
-        catch { /* bỏ qua */ }
+        catch { /* ignore */ }
     }
 
     private void CopyName_Click(object sender, RoutedEventArgs e) =>
@@ -786,13 +786,13 @@ public partial class MainWindow : Window
 
     private static void SetSummary(S3Profile p, ScanInfo? s)
     {
-        p.Summary = s == null ? "Chưa quét" : $"{s.FileCount:N0} file · {FormatUtil.Size(s.TotalSize)}";
+        p.Summary = s == null ? "Not scanned" : $"{s.FileCount:N0} files · {FormatUtil.Size(s.TotalSize)}";
         p.ScanTime = s == null ? "" : s.ScannedAtUtc.ToLocalTime().ToString("dd/MM HH:mm");
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e) { _scanCts?.Cancel(); _opCts?.Cancel(); }
 
-    /// <summary>Thư mục luôn đứng trước, tên so sánh kiểu Explorer.</summary>
+    /// <summary>Folders always come first; names compare Explorer-style.</summary>
     private sealed class EntryComparer : IComparer
     {
         private readonly string _key;

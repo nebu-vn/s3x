@@ -7,13 +7,13 @@ public sealed record ScanInfo(DateTime ScannedAtUtc, long FileCount, long TotalS
 
 public sealed record FolderInfo(long FileCount, long TotalSize);
 
-/// <summary>Một file đã tải về máy: key tương đối, đường dẫn cục bộ, size + last_modified của object lúc tải.</summary>
+/// <summary>A downloaded file: relative key, local path, and the object's size + last_modified at download time.</summary>
 public sealed record DownloadRecord(string Key, string LocalPath, long Size, long LastModifiedTicksUtc);
 
 /// <summary>
 /// Cache metadata trong SQLite (%LocalAppData%\S3Explorer\cache.db).
-/// Mỗi object lưu kèm thư mục cha để mở thư mục chỉ cần 1 truy vấn theo index,
-/// và tổng số file / dung lượng của mỗi thư mục được tính sẵn lúc quét.
+/// Each object is stored with its parent folder so opening a folder takes a single indexed query,
+/// and each folder's total file count / size is precomputed during the scan.
 /// </summary>
 public sealed class CacheStore
 {
@@ -33,8 +33,8 @@ public sealed class CacheStore
             PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS objects(
                 profile_id    TEXT    NOT NULL,
-                key           TEXT    NOT NULL,   -- đường dẫn tương đối so với prefix
-                parent        TEXT    NOT NULL,   -- thư mục cha, '' = gốc, kết thúc '/'
+                key           TEXT    NOT NULL,   -- path relative to the prefix
+                parent        TEXT    NOT NULL,   -- parent folder, '' = root, ends with '/'
                 name          TEXT    NOT NULL,
                 ext           TEXT    NOT NULL,
                 size          INTEGER NOT NULL,
@@ -48,8 +48,8 @@ public sealed class CacheStore
                 path          TEXT    NOT NULL,
                 parent        TEXT    NOT NULL,
                 name          TEXT    NOT NULL,
-                file_count    INTEGER NOT NULL,   -- đệ quy
-                total_size    INTEGER NOT NULL,   -- đệ quy
+                file_count    INTEGER NOT NULL,   -- recursive
+                total_size    INTEGER NOT NULL,   -- recursive
                 last_modified INTEGER NOT NULL,
                 PRIMARY KEY(profile_id, path)) WITHOUT ROWID;
             CREATE INDEX IF NOT EXISTS ix_folders_parent ON folders(profile_id, parent);
@@ -64,9 +64,9 @@ public sealed class CacheStore
 
             CREATE TABLE IF NOT EXISTS downloads(
                 profile_id    TEXT    NOT NULL,
-                key           TEXT    NOT NULL,   -- đường dẫn tương đối so với prefix
+                key           TEXT    NOT NULL,   -- path relative to the prefix
                 local_path    TEXT    NOT NULL,
-                size          INTEGER NOT NULL,   -- của object lúc tải, để nhận ra object đã đổi
+                size          INTEGER NOT NULL,   -- of the object at download time, to detect changed objects
                 last_modified INTEGER NOT NULL,
                 downloaded_at INTEGER NOT NULL,
                 PRIMARY KEY(profile_id, key)) WITHOUT ROWID;
@@ -112,7 +112,7 @@ public sealed class CacheStore
         return r.Read() ? new FolderInfo(r.GetInt64(0), r.GetInt64(1)) : null;
     }
 
-    /// <summary>Các thư mục con và file trực tiếp trong một thư mục — đọc hoàn toàn từ cache.</summary>
+    /// <summary>Direct subfolders and files of a folder — read entirely from the cache.</summary>
     public List<S3Entry> GetChildren(string profileId, string parent)
     {
         var list = new List<S3Entry>();
@@ -134,7 +134,7 @@ public sealed class CacheStore
                 {
                     IsFolder = true,
                     RelativePath = r.GetString(0),
-                    Name = r.GetString(1) is { Length: > 0 } n ? n : "(không tên)",
+                    Name = r.GetString(1) is { Length: > 0 } n ? n : "(unnamed)",
                     FileCount = r.GetInt64(2),
                     Size = r.GetInt64(3),
                     LastModifiedUtc = ticks > 0 ? new DateTime(ticks, DateTimeKind.Utc) : null
@@ -173,8 +173,8 @@ public sealed class CacheStore
     }
 
     /// <summary>
-    /// Cập nhật cache sau khi xóa trên S3: bỏ các file / thư mục (đường dẫn tương đối, thư mục kết thúc '/'),
-    /// trừ số file và dung lượng ở mọi thư mục cha, cập nhật tổng trong bảng scans.
+    /// Update the cache after deleting on S3: remove the files / folders (relative paths, folders end with '/'),
+    /// subtract file counts and sizes from every parent folder, and update the totals in the scans table.
     /// </summary>
     public void ApplyDelete(string profileId, IEnumerable<string> fileKeys, IEnumerable<string> folderPaths)
     {
@@ -280,7 +280,7 @@ public sealed class CacheStore
         tx.Commit();
     }
 
-    /// <summary>Ghi nhớ các file đã tải về (ghi đè bản ghi cũ của cùng key).</summary>
+    /// <summary>Record downloaded files (overwriting older records for the same key).</summary>
     public void RecordDownloads(string profileId, IEnumerable<DownloadRecord> records)
     {
         using var c = Open();
@@ -331,8 +331,8 @@ public sealed class CacheStore
     }
 
     /// <summary>
-    /// Bắt đầu thay thế cache của một cấu hình. Dữ liệu cũ vẫn được đọc bình thường
-    /// cho tới khi Commit; nếu hủy/lỗi (Dispose không Commit) thì cache cũ giữ nguyên.
+    /// Begin replacing a profile's cache. Old data can still be read normally
+    /// until Commit; on cancel/error (Dispose without Commit) the old cache stays intact.
     /// </summary>
     public ReplaceSession BeginReplace(string profileId) => new(Open(), profileId);
 
@@ -378,9 +378,9 @@ public sealed class CacheStore
 
         public void Add(string rel, long size, long ticksUtc, string? storageClass)
         {
-            if (rel.Length == 0) return;                 // object trùng chính prefix
+            if (rel.Length == 0) return;                 // object equal to the prefix itself
 
-            if (rel.EndsWith('/'))                       // "folder marker" do console S3 tạo
+            if (rel.EndsWith('/'))                       // "folder marker" created by the S3 console
             {
                 EnsureFolder(rel);
                 return;
@@ -469,7 +469,7 @@ public sealed class CacheStore
         {
             if (!_done)
             {
-                try { _tx.Rollback(); } catch { /* đã đóng */ }
+                try { _tx.Rollback(); } catch { /* already closed */ }
             }
             _ins.Dispose();
             _tx.Dispose();

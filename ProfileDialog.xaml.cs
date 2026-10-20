@@ -9,7 +9,7 @@ public partial class ProfileDialog : Window
 {
     private readonly S3Profile? _original;
 
-    /// <summary>Kết quả sau khi bấm Lưu (bản sao, chưa ghi vào danh sách).</summary>
+    /// <summary>Result after clicking Save (a copy, not yet written to the list).</summary>
     public S3Profile? Result { get; private set; }
 
     public ProfileDialog(S3Profile? existing)
@@ -18,7 +18,7 @@ public partial class ProfileDialog : Window
         _original = existing;
 
         var p = existing ?? new S3Profile();
-        Title = existing == null ? "Thêm cấu hình S3" : $"Sửa cấu hình — {existing.Name}";
+        Title = existing == null ? "Add S3 profile" : $"Edit profile — {existing.Name}";
         NameBox.Text = p.Name;
         EndpointBox.Text = p.ServiceUrl;
         RegionBox.Text = p.Region;
@@ -28,7 +28,7 @@ public partial class ProfileDialog : Window
         AccessKeyBox.Text = p.AccessKey;
 
         if (existing != null && !string.IsNullOrEmpty(existing.EncryptedSecretKey))
-            SecretHint.Text = "Để trống để giữ secret key hiện tại.";
+            SecretHint.Text = "Leave empty to keep the current secret key.";
 
         Loaded += (_, _) => NameBox.Focus();
     }
@@ -49,12 +49,12 @@ public partial class ProfileDialog : Window
 
     private string? Validate(S3Profile p)
     {
-        if (p.Bucket.Length == 0) return "Vui lòng nhập tên bucket.";
-        if (p.ServiceUrl.Length == 0 && p.Region.Length == 0) return "Vui lòng nhập region khi dùng AWS S3.";
+        if (p.Bucket.Length == 0) return "Please enter a bucket name.";
+        if (p.ServiceUrl.Length == 0 && p.Region.Length == 0) return "Please enter a region when using AWS S3.";
         if (p.ServiceUrl.Length > 0 && !Uri.TryCreate(p.ServiceUrl, UriKind.Absolute, out _))
-            return "Endpoint không hợp lệ (cần dạng https://...).";
+            return "Invalid endpoint (expected https://...).";
         if (p.AccessKey.Length > 0 && string.IsNullOrEmpty(p.EncryptedSecretKey))
-            return "Vui lòng nhập secret key.";
+            return "Please enter the secret key.";
         return null;
     }
 
@@ -65,16 +65,16 @@ public partial class ProfileDialog : Window
         if (err != null) { ShowTest(err, false); return; }
 
         TestButton.IsEnabled = false;
-        ShowTest("Đang kiểm tra…", null);
+        ShowTest("Testing…", null);
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             await S3Service.TestAsync(p, cts.Token);
-            ShowTest("Kết nối thành công ✔", true);
+            ShowTest("Connection successful ✔", true);
         }
         catch (Exception ex)
         {
-            ShowTest("Lỗi: " + ex.Message, false);
+            ShowTest("Error: " + ex.Message, false);
         }
         finally
         {
@@ -101,7 +101,7 @@ public partial class ProfileDialog : Window
         var err = Validate(p);
         if (err != null)
         {
-            MessageBox.Show(this, err, "Thiếu thông tin", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, err, "Missing information", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         Result = p;

@@ -17,13 +17,13 @@ public static class FormatUtil
 
     public static string Duration(long ms) =>
         ms < 1000 ? $"{ms} ms" :
-        ms < 60_000 ? $"{ms / 1000.0:0.#} giây" :
-        $"{ms / 60_000} phút {ms / 1000 % 60} giây";
+        ms < 60_000 ? $"{ms / 1000.0:0.#} s" :
+        $"{ms / 60_000} min {ms / 1000 % 60} s";
 
     [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
     private static extern int StrCmpLogicalW(string a, string b);
 
-    /// <summary>So sánh tên kiểu Windows Explorer (file2 &lt; file10).</summary>
+    /// <summary>Compare names the way Windows Explorer does (file2 &lt; file10).</summary>
     public static int NaturalCompare(string a, string b)
     {
         try { return StrCmpLogicalW(a, b); }

@@ -4,8 +4,8 @@ using System.Windows.Media;
 namespace S3Explorer.Services;
 
 /// <summary>
-/// Icon vector phong cách macOS (thư mục xanh, tài liệu trang trắng gập góc, màu theo loại file).
-/// Vẽ bằng DrawingImage nên nét ở mọi kích thước / DPI. Mọi hình nằm trong khung 64×64.
+/// macOS-style vector icons (blue folder, white page with folded corner, colored by file type).
+/// Drawn with DrawingImage so they stay sharp at any size / DPI. All shapes fit in a 64×64 box.
 /// </summary>
 public static class MacIcons
 {
@@ -48,7 +48,7 @@ public static class MacIcons
         _ => (Kind.Band, "#C7C7CC")
     };
 
-    // ---------- Thư mục ----------
+    // ---------- Folder ----------
     private static ImageSource BuildFolder()
     {
         var g = Box();
@@ -61,7 +61,7 @@ public static class MacIcons
         return Make(g);
     }
 
-    // ---------- Đám mây (cho kết nối S3) ----------
+    // ---------- Cloud (for S3 connections) ----------
     private static ImageSource BuildCloud()
     {
         var g = Box();
@@ -73,7 +73,7 @@ public static class MacIcons
         return Make(g);
     }
 
-    // ---------- Tài liệu ----------
+    // ---------- Document ----------
     private static ImageSource BuildFile(Kind kind, string color)
     {
         var g = Box();

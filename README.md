@@ -5,8 +5,6 @@
 
 A Windows Explorer-style S3 metadata browser. Browse object listings (name, size, type, date modified, storage class) from a local cache; download files/folders to your machine and delete files/folders on S3.
 
-> The app's UI is in Vietnamese; UI labels below are given in English with the original label in parentheses.
-
 ## Running
 
 ```
@@ -17,14 +15,14 @@ Requirements: Windows, .NET 8 SDK.
 ## Features
 
 - Add / edit / delete multiple S3 profiles (AWS S3 or S3-compatible: MinIO, Wasabi, R2…); each profile = bucket + prefix.
-- **Test connection** button ("Kiểm tra kết nối") in the profile dialog.
+- **Test connection** button in the profile dialog.
 - First time a profile is opened: the whole prefix is scanned with `ListObjectsV2` (1000 objects/page) and stored in a SQLite cache.
-- Subsequent opens: loads instantly from cache, no S3 calls. Click **Rescan from S3** ("Quét lại từ S3", F5) when you want to refresh.
+- Subsequent opens: loads instantly from cache, no S3 calls. Click **Rescan** (F5) when you want to refresh.
 - Explorer-style view: folders first, then files; columns Name (with Windows icon), Date modified, Type, Size, File count (for folders: recursive total), Storage class.
 - Each folder has its total file count and size (including subfolders) precomputed.
 - Sort by column, filter by name, Back / Up, Enter opens a folder, Backspace goes up a level.
-- Double-click a file (or the ⬇ button) to download it to the Downloads folder; right-click → "Download to another folder…" ("Tải về thư mục khác…"). Folders are downloaded recursively, preserving structure. Downloads run 4 files in parallel and never overwrite existing files (a " (1)" suffix is added automatically).
-- 🗑 button / Delete key / right-click → "Delete from S3…" ("Xóa khỏi S3…"): permanently deletes a file or an entire folder (with a confirmation dialog). The cache is updated immediately, no rescan needed.
+- Double-click a file (or the ⬇ button) to download it to the Downloads folder; right-click → "Download to another folder…". Folders are downloaded recursively, preserving structure. Downloads run 4 files in parallel and never overwrite existing files (a " (1)" suffix is added automatically).
+- 🗑 button / Delete key / right-click → "Delete from S3…": permanently deletes a file or an entire folder (with a confirmation dialog). The cache is updated immediately, no rescan needed.
 - Right-click: copy name / key / `s3://` URI.
 
 ## Storage

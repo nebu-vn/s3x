@@ -3,13 +3,13 @@ using S3Explorer.Services;
 
 namespace S3Explorer.Models;
 
-/// <summary>Một cấu hình S3 (bucket + prefix) mà người dùng đã thêm.</summary>
+/// <summary>An S3 profile (bucket + prefix) added by the user.</summary>
 public sealed class S3Profile
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
 
-    /// <summary>Endpoint cho S3-compatible (MinIO, Wasabi, R2, ...). Để trống = AWS S3.</summary>
+    /// <summary>Endpoint for S3-compatible services (MinIO, Wasabi, R2, ...). Empty = AWS S3.</summary>
     public string ServiceUrl { get; set; } = "";
     public string Region { get; set; } = "ap-southeast-1";
     public string Bucket { get; set; } = "";
@@ -18,7 +18,7 @@ public sealed class S3Profile
 
     public string AccessKey { get; set; } = "";
 
-    /// <summary>Secret key mã hóa bằng Windows DPAPI (chỉ user Windows hiện tại giải mã được).</summary>
+    /// <summary>Secret key encrypted with Windows DPAPI (only the current Windows user can decrypt it).</summary>
     public string EncryptedSecretKey { get; set; } = "";
 
     [JsonIgnore]
@@ -28,15 +28,15 @@ public sealed class S3Profile
         set => EncryptedSecretKey = Crypto.Protect(value);
     }
 
-    /// <summary>Dòng tóm tắt cache hiển thị trong danh sách (không lưu vào JSON).</summary>
+    /// <summary>Cache summary line shown in the list (not saved to JSON).</summary>
     [JsonIgnore]
     public string Summary { get; set; } = "";
 
-    /// <summary>Thời điểm quét gần nhất (hiển thị, không lưu vào JSON).</summary>
+    /// <summary>Time of the last scan (display only, not saved to JSON).</summary>
     [JsonIgnore]
     public string ScanTime { get; set; } = "";
 
-    /// <summary>Prefix chuẩn hóa: không có '/' đầu, luôn kết thúc bằng '/' (hoặc rỗng).</summary>
+    /// <summary>Normalized prefix: no leading '/', always ends with '/' (or empty).</summary>
     [JsonIgnore]
     public string NormalizedPrefix
     {
@@ -51,7 +51,7 @@ public sealed class S3Profile
     public string Display => $"{Bucket}/{NormalizedPrefix}" +
                              (string.IsNullOrWhiteSpace(ServiceUrl) ? "" : $"  @ {ServiceUrl.Trim()}");
 
-    /// <summary>True nếu thay đổi làm danh sách file khác đi (cần xóa cache).</summary>
+    /// <summary>True if the change alters the file listing (cache must be cleared).</summary>
     public bool ScopeDiffers(S3Profile other) =>
         !string.Equals(ServiceUrl.Trim(), other.ServiceUrl.Trim(), StringComparison.OrdinalIgnoreCase) ||
         Bucket.Trim() != other.Bucket.Trim() ||

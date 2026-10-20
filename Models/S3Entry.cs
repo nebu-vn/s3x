@@ -4,15 +4,15 @@ using S3Explorer.Services;
 
 namespace S3Explorer.Models;
 
-/// <summary>Một dòng trong danh sách kiểu Explorer: thư mục hoặc file.</summary>
+/// <summary>A row in the Explorer-style listing: a folder or a file.</summary>
 public sealed class S3Entry : INotifyPropertyChanged
 {
     public bool IsFolder { get; init; }
 
-    /// <summary>Tên hiển thị (không có đường dẫn).</summary>
+    /// <summary>Display name (without path).</summary>
     public string Name { get; init; } = "";
 
-    /// <summary>Đường dẫn tương đối so với prefix của cấu hình. Thư mục kết thúc bằng '/'.</summary>
+    /// <summary>Path relative to the profile's prefix. Folders end with '/'.</summary>
     public string RelativePath { get; init; } = "";
 
     public string Extension { get; init; } = "";
@@ -20,7 +20,7 @@ public sealed class S3Entry : INotifyPropertyChanged
     public DateTime? LastModifiedUtc { get; init; }
     public string StorageClass { get; init; } = "";
 
-    /// <summary>Thư mục: tổng số file bên trong (gồm cả thư mục con).</summary>
+    /// <summary>Folder: total number of files inside (including subfolders).</summary>
     public long FileCount { get; init; }
 
     public string TypeName { get; set; } = "";
@@ -28,7 +28,7 @@ public sealed class S3Entry : INotifyPropertyChanged
 
     private string? _localPath;
 
-    /// <summary>File đã tải về máy: đường dẫn bản cục bộ (null = chưa tải hoặc bản tải đã cũ / bị xóa).</summary>
+    /// <summary>Downloaded file: path of the local copy (null = not downloaded, or the copy is stale / deleted).</summary>
     public string? LocalPath
     {
         get => _localPath;
@@ -43,7 +43,7 @@ public sealed class S3Entry : INotifyPropertyChanged
     }
 
     public bool IsDownloaded => _localPath != null;
-    public string? DownloadTip => _localPath == null ? null : $"Đã tải về: {_localPath}\nNhấp đúp để mở";
+    public string? DownloadTip => _localPath == null ? null : $"Downloaded to: {_localPath}\nDouble-click to open";
 
     public string SizeText => FormatUtil.Size(Size);
     public string CountText => IsFolder ? FileCount.ToString("N0") : "";

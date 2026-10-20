@@ -11,7 +11,7 @@ namespace S3Explorer.Services;
 
 public sealed record S3ObjectInfo(string Key, long Size, long LastModifiedTicksUtc, string? StorageClass);
 
-/// <summary>Truy cập S3: liệt kê metadata, tải file về, xóa object.</summary>
+/// <summary>S3 access: list metadata, download files, delete objects.</summary>
 public static class S3Service
 {
     public static IAmazonS3 CreateClient(S3Profile p)
@@ -36,7 +36,7 @@ public static class S3Service
         return new AmazonS3Client(creds, cfg);
     }
 
-    /// <summary>Kiểm tra kết nối: list 1 object.</summary>
+    /// <summary>Test connection: list 1 object.</summary>
     public static async Task TestAsync(S3Profile p, CancellationToken ct = default)
     {
         using var client = CreateClient(p);
@@ -48,7 +48,7 @@ public static class S3Service
         }, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Liệt kê toàn bộ object dưới prefix (đệ quy), mỗi lần trả một trang ≤1000 object.</summary>
+    /// <summary>List all objects under a prefix (recursively), yielding one page of ≤1000 objects at a time.</summary>
     public static async IAsyncEnumerable<IReadOnlyList<S3ObjectInfo>> ListAllAsync(
         IAmazonS3 client, string bucket, string prefix,
         [EnumeratorCancellation] CancellationToken ct = default)
@@ -81,7 +81,7 @@ public static class S3Service
         }
     }
 
-    /// <summary>Tải một object về file cục bộ (ghi ra .part rồi đổi tên khi xong).</summary>
+    /// <summary>Download an object to a local file (writes to .part, then renames when done).</summary>
     public static async Task DownloadAsync(IAmazonS3 client, string bucket, string key, string localPath,
         Action<long>? onBytes, CancellationToken ct)
     {
@@ -104,14 +104,14 @@ public static class S3Service
         }
         catch
         {
-            try { File.Delete(tmp); } catch { /* bỏ qua */ }
+            try { File.Delete(tmp); } catch { /* ignore */ }
             throw;
         }
     }
 
     /// <summary>
-    /// Xóa danh sách key (DeleteObjects, 1000 key/lần; nếu endpoint không hỗ trợ thì xóa từng key).
-    /// Trả về các key xóa thất bại.
+    /// Delete a list of keys (DeleteObjects, 1000 keys per call; falls back to one key at a time if the endpoint doesn't support it).
+    /// Returns the keys that failed to delete.
     /// </summary>
     public static async Task<List<string>> DeleteKeysAsync(IAmazonS3 client, string bucket, IReadOnlyList<string> keys,
         Action<int>? onDone, CancellationToken ct)

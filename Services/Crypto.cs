@@ -3,7 +3,7 @@ using System.Text;
 
 namespace S3Explorer.Services;
 
-/// <summary>Mã hóa secret key bằng DPAPI theo user Windows hiện tại.</summary>
+/// <summary>Encrypts the secret key with DPAPI for the current Windows user.</summary>
 public static class Crypto
 {
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("S3Explorer.v1");
@@ -25,7 +25,7 @@ public static class Crypto
         }
         catch
         {
-            return ""; // file cấu hình bị copy sang máy/user khác
+            return ""; // profile file was copied to another machine/user
         }
     }
 }
