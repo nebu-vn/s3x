@@ -280,6 +280,127 @@ public sealed class CacheStore
         tx.Commit();
     }
 
+    /// <summary>
+    /// Update the cache after copying objects onto S3: insert / replace the objects (relative keys; keys ending
+    /// with '/' are folder markers), create missing folders, add file counts and sizes to every parent folder,
+    /// and update the totals in the scans table.
+    /// </summary>
+    public void ApplyAdd(string profileId, IEnumerable<(string Key, long Size)> objects, long ticksUtc, string? storageClass)
+    {
+        using var c = Open();
+        using var tx = c.BeginTransaction();
+        var delta = new Dictionary<string, (long Count, long Size)>(StringComparer.Ordinal);
+        var known = new HashSet<string>(StringComparer.Ordinal);
+        long totalCount = 0, totalSize = 0;
+
+        SqliteCommand Cmd(string sql)
+        {
+            var cmd = c.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("$p", profileId);
+            return cmd;
+        }
+
+        using var insFolder = Cmd("""
+            INSERT OR IGNORE INTO folders(profile_id, path, parent, name, file_count, total_size, last_modified)
+            VALUES($p, $f, $parent, $name, 0, 0, 0)
+            """);
+        var fPath = insFolder.Parameters.Add("$f", SqliteType.Text);
+        var fParent = insFolder.Parameters.Add("$parent", SqliteType.Text);
+        var fName = insFolder.Parameters.Add("$name", SqliteType.Text);
+
+        void EnsureFolder(string path)
+        {
+            for (var f = path; known.Add(f); f = ParentOf(f))
+            {
+                fPath.Value = f;
+                fParent.Value = f.Length == 0 ? "" : ParentOf(f);
+                fName.Value = FolderName(f);
+                insFolder.ExecuteNonQuery();
+                if (f.Length == 0) break;
+            }
+        }
+
+        using var oldSize = Cmd("SELECT size FROM objects WHERE profile_id=$p AND key=$k");
+        var oKey = oldSize.Parameters.Add("$k", SqliteType.Text);
+
+        using var ins = Cmd("""
+            INSERT OR REPLACE INTO objects(profile_id, key, parent, name, ext, size, last_modified, storage_class)
+            VALUES($p, $k, $parent, $name, $ext, $size, $mod, $class)
+            """);
+        var pKey = ins.Parameters.Add("$k", SqliteType.Text);
+        var pParent = ins.Parameters.Add("$parent", SqliteType.Text);
+        var pName = ins.Parameters.Add("$name", SqliteType.Text);
+        var pExt = ins.Parameters.Add("$ext", SqliteType.Text);
+        var pSize = ins.Parameters.Add("$size", SqliteType.Integer);
+        ins.Parameters.AddWithValue("$mod", ticksUtc);
+        ins.Parameters.AddWithValue("$class", (object?)storageClass ?? DBNull.Value);
+
+        foreach (var (key, size) in objects)
+        {
+            if (key.Length == 0) continue;
+            if (key.EndsWith('/')) { EnsureFolder(key); continue; }
+
+            int slash = key.LastIndexOf('/');
+            var parent = slash < 0 ? "" : key[..(slash + 1)];
+            var name = key[(slash + 1)..];
+            EnsureFolder(parent);
+
+            oKey.Value = key;
+            var old = oldSize.ExecuteScalar() is long o ? o : (long?)null;
+
+            pKey.Value = key;
+            pParent.Value = parent;
+            pName.Value = name;
+            pExt.Value = GetExt(name);
+            pSize.Value = size;
+            ins.ExecuteNonQuery();
+
+            long dc = old == null ? 1 : 0, ds = size - (old ?? 0);
+            totalCount += dc;
+            totalSize += ds;
+            for (var f = parent; ; f = ParentOf(f))
+            {
+                delta.TryGetValue(f, out var d);
+                delta[f] = (d.Count + dc, d.Size + ds);
+                if (f.Length == 0) break;
+            }
+        }
+
+        using (var u = Cmd("""
+            UPDATE folders SET file_count = max(0, file_count + $c), total_size = max(0, total_size + $s),
+                last_modified = max(last_modified, $mod)
+            WHERE profile_id=$p AND path=$path
+            """))
+        {
+            var pc = u.Parameters.Add("$c", SqliteType.Integer);
+            var ps = u.Parameters.Add("$s", SqliteType.Integer);
+            var pp = u.Parameters.Add("$path", SqliteType.Text);
+            u.Parameters.AddWithValue("$mod", ticksUtc);
+            foreach (var (path, d) in delta)
+            {
+                pc.Value = d.Count;
+                ps.Value = d.Size;
+                pp.Value = path;
+                u.ExecuteNonQuery();
+            }
+        }
+
+        using (var u = Cmd("""
+            UPDATE scans SET file_count = max(0, file_count + $c), total_size = max(0, total_size + $s),
+                folder_count = (SELECT count(*) - 1 FROM folders WHERE profile_id=$p)
+            WHERE profile_id=$p
+            """))
+        {
+            u.Parameters.AddWithValue("$c", totalCount);
+            u.Parameters.AddWithValue("$s", totalSize);
+            u.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+    }
+
     /// <summary>Record downloaded files (overwriting older records for the same key).</summary>
     public void RecordDownloads(string profileId, IEnumerable<DownloadRecord> records)
     {
@@ -484,12 +605,12 @@ public sealed class CacheStore
                 path = ParentOf(path);
             }
         }
+    }
 
-        private static string GetExt(string name)
-        {
-            int dot = name.LastIndexOf('.');
-            return dot <= 0 || dot == name.Length - 1 ? "" : name[dot..].ToLowerInvariant();
-        }
+    private static string GetExt(string name)
+    {
+        int dot = name.LastIndexOf('.');
+        return dot <= 0 || dot == name.Length - 1 ? "" : name[dot..].ToLowerInvariant();
     }
 
     /// <summary>"a/b/" → "a/", "a/" → "".</summary>

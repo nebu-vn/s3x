@@ -51,6 +51,10 @@ public sealed class S3Profile
     public string Display => $"{Bucket}/{NormalizedPrefix}" +
                              (string.IsNullOrWhiteSpace(ServiceUrl) ? "" : $"  @ {ServiceUrl.Trim()}");
 
+    /// <summary>Provider the bucket lives on (sidebar group): endpoint domain incl. all subdomains, or "Amazon S3".</summary>
+    [JsonIgnore]
+    public string ServerGroup => SidebarGroups.ForEndpoint(ServiceUrl);
+
     /// <summary>True if the change alters the file listing (cache must be cleared).</summary>
     public bool ScopeDiffers(S3Profile other) =>
         !string.Equals(ServiceUrl.Trim(), other.ServiceUrl.Trim(), StringComparison.OrdinalIgnoreCase) ||

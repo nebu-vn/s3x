@@ -1,0 +1,78 @@
+<Window x:Class="S3Explorer.TransferDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Copy to another bucket" Width="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
+        Background="White" FontFamily="{StaticResource UiFont}" FontSize="13"
+        Foreground="{StaticResource TextBrush}" TextOptions.TextFormattingMode="Display" UseLayoutRounding="True">
+    <Window.Resources>
+        <Style TargetType="TextBlock" x:Key="Label">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Foreground" Value="#3A3A3C" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+        </Style>
+        <Style TargetType="TextBlock" x:Key="Hint">
+            <Setter Property="Foreground" Value="#8E8E93" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Margin" Value="2,4,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="22,20,22,18">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="16" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="20" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Grid.ColumnSpan="2">
+            <TextBlock x:Name="SummaryText" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock x:Name="SourceText" Style="{StaticResource Hint}" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="2" Style="{StaticResource Label}" Text="Destination" VerticalAlignment="Top" Margin="0,6,12,0" />
+        <StackPanel Grid.Row="2" Grid.Column="1">
+            <ComboBox x:Name="ProfileBox" SelectionChanged="Input_Changed">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Display}" Foreground="#8E8E93" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="Destination bucket = an S3 connection. Add a connection for the bucket first if it isn't listed." />
+        </StackPanel>
+
+        <TextBlock Grid.Row="4" Style="{StaticResource Label}" Text="Folder" VerticalAlignment="Top" Margin="0,6,12,0" />
+        <StackPanel Grid.Row="4" Grid.Column="1">
+            <TextBox x:Name="FolderBox" TextChanged="Input_Changed" />
+            <TextBlock x:Name="TargetText" Style="{StaticResource Hint}" />
+        </StackPanel>
+
+        <CheckBox Grid.Row="6" Grid.Column="1" x:Name="OverwriteBox"
+                  Content="Overwrite files that already exist at the destination" />
+
+        <DockPanel Grid.Row="8" Grid.ColumnSpan="2" LastChildFill="False">
+            <TextBlock x:Name="ErrorText" DockPanel.Dock="Left" VerticalAlignment="Center" Foreground="Firebrick"
+                       MaxWidth="300" TextTrimming="CharacterEllipsis" />
+            <Button DockPanel.Dock="Right" Content="Cancel" IsCancel="True" Margin="8,0,0,0" />
+            <Button x:Name="OkButton" DockPanel.Dock="Right" Content="Copy" IsDefault="True" MinWidth="80"
+                    Style="{StaticResource PrimaryButton}" Click="Ok_Click" />
+        </DockPanel>
+    </Grid>
+</Window>

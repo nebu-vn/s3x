@@ -44,6 +44,8 @@ public partial class MainWindow : Window
             _profiles.Add(p);
         }
         ProfileList.ItemsSource = _profiles;
+        // Group buckets on the same server; Items.Refresh() regroups after an endpoint is edited
+        CollectionViewSource.GetDefaultView(_profiles).GroupDescriptions.Add(new PropertyGroupDescription(nameof(S3Profile.ServerGroup)));
 
         if (_profiles.Count > 0) ProfileList.SelectedIndex = 0;
         else ShowEmpty(NoProfileText);
@@ -112,6 +114,12 @@ public partial class MainWindow : Window
         _profiles.Remove(p);
         _profileStore.Save(_profiles);
         if (_profiles.Count == 0) ShowEmpty(NoProfileText);
+    }
+
+    private void Group_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Primitives.ToggleButton { Tag: string group } t)
+            SidebarGroups.SetExpanded(group, t.IsChecked == true);
     }
 
     private async void ProfileList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -569,11 +577,8 @@ public partial class MainWindow : Window
         if (items.Count == 0) return;
         if (IsBusy) { ShowNotice("Another operation is running — please wait or click Cancel.", null, error: true); return; }
 
-        long files = items.Sum(x => x.IsFolder ? x.FileCount : 1);
         long size = items.Sum(x => x.Size);
-        string what = items.Count == 1
-            ? (items[0].IsFolder ? $"folder \"{items[0].Name}\" ({files:N0} files inside)" : $"\"{items[0].Name}\"")
-            : $"{items.Count:N0} items ({files:N0} files)";
+        string what = Describe(items);
         if (MessageBox.Show(this,
                 $"Permanently delete {what} — {FormatUtil.Size(size)} from S3?\n\nBucket: {_current.Bucket}\nThis action CANNOT be undone.",
                 "Confirm delete", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
@@ -645,6 +650,222 @@ public partial class MainWindow : Window
             if (_current?.Id == p.Id)
             {
                 var path = _currentPath.Length == 0 || _cache.GetFolder(p.Id, _currentPath) != null ? _currentPath : "";
+                ShowFolder(path, push: false);
+            }
+        }
+    }
+
+    private static string Describe(List<S3Entry> items)
+    {
+        long files = items.Sum(x => x.IsFolder ? x.FileCount : 1);
+        return items.Count == 1
+            ? (items[0].IsFolder ? $"folder \"{items[0].Name}\" ({files:N0} files inside)" : $"\"{items[0].Name}\"")
+            : $"{items.Count:N0} items ({files:N0} files)";
+    }
+
+    // ===================== Copy / move to another bucket =====================
+
+    private void CopyTo_Click(object sender, RoutedEventArgs e) => _ = TransferSelectedAsync(move: false);
+
+    private void MoveTo_Click(object sender, RoutedEventArgs e) => _ = TransferSelectedAsync(move: true);
+
+    /// <summary>One object to copy; Item = index of the selected entry it belongs to.</summary>
+    private sealed record TransferJob(string SrcKey, string DestKey, long Size, int Item)
+    {
+        public bool IsMarker => SrcKey.EndsWith('/');
+    }
+
+    /// <summary>Name of an entry inside its parent: "a/b.txt" → "b.txt", "a/b/" → "b/".</summary>
+    private static string LeafName(S3Entry en) => en.IsFolder
+        ? CacheStore.FolderName(en.RelativePath) + "/"
+        : en.RelativePath[(en.RelativePath.LastIndexOf('/') + 1)..];
+
+    /// <summary>Error message if the items can't go to dest/folder (onto or into themselves), otherwise null.</summary>
+    private static string? CheckDestination(S3Profile src, List<S3Entry> items, S3Profile dest, string folder)
+    {
+        if (string.IsNullOrWhiteSpace(dest.AccessKey)) return "The destination connection has no access key, so it can't write.";
+        bool sameBucket = string.Equals(src.ServiceUrl.Trim(), dest.ServiceUrl.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                          src.Bucket.Trim() == dest.Bucket.Trim();
+        if (!sameBucket) return null;
+
+        var destPrefix = dest.NormalizedPrefix + folder;
+        foreach (var en in items)
+        {
+            var srcKey = src.NormalizedPrefix + en.RelativePath;
+            if (destPrefix + LeafName(en) == srcKey) return "The destination is the same as the source.";
+            if (en.IsFolder && destPrefix.StartsWith(srcKey, StringComparison.Ordinal))
+                return $"Can't put folder \"{en.Name}\" inside itself.";
+        }
+        return null;
+    }
+
+    private async Task TransferSelectedAsync(bool move)
+    {
+        if (_current == null) return;
+        var items = SelectedEntries();
+        if (items.Count == 0) return;
+        if (IsBusy) { ShowNotice("Another operation is running — please wait or click Cancel.", null, error: true); return; }
+
+        var src = _current;
+        var dlg = new TransferDialog(move,
+            $"{(move ? "Move" : "Copy")} {Describe(items)} — {FormatUtil.Size(items.Sum(x => x.Size))}",
+            $"s3://{src.Bucket.Trim()}/{src.NormalizedPrefix}{_currentPath}",
+            _profiles, src, _currentPath, (d, f) => CheckDestination(src, items, d, f)) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.Destination == null) return;
+
+        var dest = dlg.Destination;
+        bool overwrite = dlg.Overwrite;
+        var srcBucket = src.Bucket.Trim();
+        var srcPrefix = src.NormalizedPrefix;
+        var destBucket = dest.Bucket.Trim();
+        var destPrefix = dest.NormalizedPrefix + dlg.Folder;
+        var destUri = $"s3://{destBucket}/{destPrefix}";
+        // Same endpoint + keys → CopyObject on the server; otherwise each object goes through a temp file
+        bool serverSide = S3Service.SameAccount(src, dest);
+        var tempDir = Path.Combine(Path.GetTempPath(), "S3Explorer");
+        string ing = move ? "Moving" : "Copying";
+
+        _opCts = new CancellationTokenSource();
+        var ct = _opCts.Token;
+        HideNotice();
+        ProgressText.Text = "Listing objects…";
+        SetScanning(true);
+
+        long doneBytes = 0, totalBytes = 0;
+        int doneFiles = 0, totalFiles = 0, skipped = 0;
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        timer.Tick += (_, _) => ProgressText.Text = totalFiles == 0 ? "Listing objects…" :
+            $"{ing} {Volatile.Read(ref doneFiles):N0}/{totalFiles:N0} files · " +
+            $"{FormatUtil.Size(Interlocked.Read(ref doneBytes))} / {FormatUtil.Size(totalBytes)} → {destUri}";
+        timer.Start();
+
+        var errors = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var deleteFailed = new List<string>();
+        try
+        {
+            await Task.Run(async () =>
+            {
+                using var srcClient = S3Service.CreateClient(src);
+                using var destClient = S3Service.CreateClient(dest);
+
+                var jobs = new List<TransferJob>();
+                var existing = new HashSet<string>(StringComparer.Ordinal);
+                for (int i = 0; i < items.Count; i++)
+                {
+                    var en = items[i];
+                    var srcKey = srcPrefix + en.RelativePath;
+                    var destKey = destPrefix + LeafName(en);
+                    if (!en.IsFolder)
+                        jobs.Add(new TransferJob(srcKey, destKey, en.Size, i));
+                    else
+                        await foreach (var page in S3Service.ListAllAsync(srcClient, srcBucket, srcKey, ct))
+                            foreach (var o in page)
+                                jobs.Add(new TransferJob(o.Key, destKey + o.Key[srcKey.Length..], o.Size, i));
+
+                    if (!overwrite)
+                        await foreach (var page in S3Service.ListAllAsync(destClient, destBucket, destKey, ct))
+                            foreach (var o in page) existing.Add(o.Key);
+                }
+
+                // Existing files are skipped; an existing folder marker needs no copy
+                var copied = new System.Collections.Concurrent.ConcurrentBag<TransferJob>();
+                var todo = new List<TransferJob>();
+                foreach (var j in jobs)
+                {
+                    if (!existing.Contains(j.DestKey)) todo.Add(j);
+                    else if (j.IsMarker) copied.Add(j);
+                    else skipped++;
+                }
+                totalBytes = todo.Where(j => !j.IsMarker).Sum(j => j.Size);
+                Volatile.Write(ref totalFiles, todo.Count(j => !j.IsMarker));
+
+                try
+                {
+                    await Parallel.ForEachAsync(todo,
+                        new ParallelOptions { MaxDegreeOfParallelism = serverSide ? 8 : 4, CancellationToken = ct },
+                        async (j, token) =>
+                        {
+                            try
+                            {
+                                if (serverSide)
+                                    await S3Service.CopyServerSideAsync(destClient, srcBucket, j.SrcKey, j.Size, destBucket, j.DestKey, token);
+                                else
+                                    await S3Service.CopyViaLocalAsync(srcClient, srcBucket, j.SrcKey, destClient, destBucket, j.DestKey, tempDir, token);
+                                copied.Add(j);
+                                if (j.IsMarker) return;
+                                Interlocked.Add(ref doneBytes, j.Size);
+                                Interlocked.Increment(ref doneFiles);
+                            }
+                            catch (OperationCanceledException) { throw; }
+                            catch (Exception ex) { errors.Add($"{j.SrcKey}: {ex.Message}"); }
+                        });
+                }
+                finally
+                {
+                    // Show what was copied (even if cancelled) without a rescan of the destination
+                    try
+                    {
+                        if (!copied.IsEmpty && _cache.GetScanInfo(dest.Id) != null)
+                            _cache.ApplyAdd(dest.Id, copied.Select(j => (j.DestKey[dest.NormalizedPrefix.Length..], j.Size)),
+                                DateTime.UtcNow.Ticks, "STANDARD");
+                    }
+                    catch { /* the cache is only stale; Rescan fixes it */ }
+                }
+
+                if (!move) return;
+
+                // Move: delete only sources that were copied. A folder with a skipped / failed object keeps its source.
+                var copiedSet = copied.ToHashSet();
+                var incomplete = jobs.Where(j => !copiedSet.Contains(j)).Select(j => j.Item).ToHashSet();
+                var del = copied.Select(j => j.SrcKey).ToHashSet(StringComparer.Ordinal);
+                for (int i = 0; i < items.Count; i++)
+                    if (items[i].IsFolder && !incomplete.Contains(i)) del.Add(srcPrefix + items[i].RelativePath); // folder marker (if any)
+
+                // not cancellable: the copies are done, finish removing the sources so the cache stays consistent
+                var bad = await S3Service.DeleteKeysAsync(srcClient, srcBucket, del.ToList(), null, CancellationToken.None);
+                var badSet = new HashSet<string>(bad, StringComparer.Ordinal);
+                deleteFailed = bad.Where(k => !k.EndsWith('/')).ToList();
+
+                var okFolders = Enumerable.Range(0, items.Count)
+                    .Where(i => items[i].IsFolder && !incomplete.Contains(i) &&
+                                !bad.Any(k => k.StartsWith(srcPrefix + items[i].RelativePath, StringComparison.Ordinal)))
+                    .ToHashSet();
+                var okFiles = copied.Where(j => !j.IsMarker && !badSet.Contains(j.SrcKey) && !okFolders.Contains(j.Item))
+                                    .Select(j => j.SrcKey[srcPrefix.Length..]).ToList();
+                _cache.ApplyDelete(src.Id, okFiles, okFolders.Select(i => items[i].RelativePath).ToList());
+            });
+
+            var msg = $"{(move ? "Moved" : "Copied")} {doneFiles:N0} files ({FormatUtil.Size(doneBytes)}) to {destUri}";
+            if (skipped > 0) msg += $" — {skipped:N0} skipped (already exist{(move ? ", source kept" : "")})";
+            if (!errors.IsEmpty)
+                ShowNotice($"{msg} — {errors.Count:N0} failed. First error: {errors.First()}", null, error: true);
+            else if (deleteFailed.Count > 0)
+                ShowNotice($"{msg}, but {deleteFailed.Count:N0} source objects could not be deleted (e.g. {deleteFailed[0]}). " +
+                           "Check the s3:DeleteObject permission.", null, error: true);
+            else
+                ShowNotice(msg + ".", null);
+        }
+        catch (OperationCanceledException)
+        {
+            ShowNotice($"{ing} cancelled ({doneFiles:N0}/{totalFiles:N0} files copied" +
+                       $"{(move ? ", nothing was deleted from the source" : "")}).", null, error: true);
+        }
+        catch (Exception ex)
+        {
+            ShowNotice($"{ing} error: " + ex.Message, null, error: true);
+        }
+        finally
+        {
+            timer.Stop();
+            _opCts.Dispose();
+            _opCts = null;
+            SetScanning(false);
+            SetSummary(src, _cache.GetScanInfo(src.Id));
+            SetSummary(dest, _cache.GetScanInfo(dest.Id));
+            ProfileList.Items.Refresh();
+            if (_current?.Id == src.Id || _current?.Id == dest.Id)
+            {
+                var path = _currentPath.Length == 0 || _cache.GetFolder(_current.Id, _currentPath) != null ? _currentPath : "";
                 ShowFolder(path, push: false);
             }
         }

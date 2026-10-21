@@ -5,13 +5,14 @@ using Amazon;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Amazon.S3.Transfer;
 using S3Explorer.Models;
 
 namespace S3Explorer.Services;
 
 public sealed record S3ObjectInfo(string Key, long Size, long LastModifiedTicksUtc, string? StorageClass);
 
-/// <summary>S3 access: list metadata, download files, delete objects.</summary>
+/// <summary>S3 access: list metadata, download files, copy / delete objects.</summary>
 public static class S3Service
 {
     public static IAmazonS3 CreateClient(S3Profile p)
@@ -23,6 +24,9 @@ public static class S3Service
         {
             cfg.ServiceURL = p.ServiceUrl.Trim();
             if (region.Length > 0) cfg.AuthenticationRegion = region;
+            // many S3-compatible services reject the SDK's default trailing checksums on uploads
+            cfg.RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED;
+            cfg.ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED;
         }
         else
         {
@@ -106,6 +110,106 @@ public static class S3Service
         {
             try { File.Delete(tmp); } catch { /* ignore */ }
             throw;
+        }
+    }
+
+    /// <summary>True if both profiles reach the same endpoint with the same credentials, so objects can be copied server-side.</summary>
+    public static bool SameAccount(S3Profile a, S3Profile b) =>
+        string.Equals(a.ServiceUrl.Trim(), b.ServiceUrl.Trim(), StringComparison.OrdinalIgnoreCase) &&
+        a.AccessKey.Trim().Length > 0 &&
+        a.AccessKey.Trim() == b.AccessKey.Trim() &&
+        a.SecretKey == b.SecretKey;
+
+    private const long MaxSingleCopy = 5L * 1024 * 1024 * 1024;   // CopyObject limit
+    private const long MinCopyPart = 512L * 1024 * 1024;
+
+    /// <summary>
+    /// Server-side copy (no data passes through this machine). Objects over 5 GB are copied with a multipart copy.
+    /// The client must be the destination profile's client and be allowed to read the source.
+    /// </summary>
+    public static async Task CopyServerSideAsync(IAmazonS3 client, string srcBucket, string srcKey, long size,
+        string destBucket, string destKey, CancellationToken ct)
+    {
+        if (size <= MaxSingleCopy)
+        {
+            await client.CopyObjectAsync(new CopyObjectRequest
+            {
+                SourceBucket = srcBucket,
+                SourceKey = srcKey,
+                DestinationBucket = destBucket,
+                DestinationKey = destKey
+            }, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // A multipart copy does not carry metadata over by itself
+        var meta = await client.GetObjectMetadataAsync(srcBucket, srcKey, ct).ConfigureAwait(false);
+        var initReq = new InitiateMultipartUploadRequest { BucketName = destBucket, Key = destKey, ContentType = meta.Headers.ContentType };
+        foreach (var k in meta.Metadata.Keys) initReq.Metadata[k] = meta.Metadata[k];
+        var init = await client.InitiateMultipartUploadAsync(initReq, ct).ConfigureAwait(false);
+
+        try
+        {
+            long partSize = Math.Max(MinCopyPart, (size + 9999) / 10000);
+            var parts = new List<CopyPartResponse>();
+            int partNo = 1;
+            for (long pos = 0; pos < size; pos += partSize, partNo++)
+            {
+                parts.Add(await client.CopyPartAsync(new CopyPartRequest
+                {
+                    SourceBucket = srcBucket,
+                    SourceKey = srcKey,
+                    DestinationBucket = destBucket,
+                    DestinationKey = destKey,
+                    UploadId = init.UploadId,
+                    PartNumber = partNo,
+                    FirstByte = pos,
+                    LastByte = Math.Min(pos + partSize, size) - 1
+                }, ct).ConfigureAwait(false));
+            }
+
+            var done = new CompleteMultipartUploadRequest { BucketName = destBucket, Key = destKey, UploadId = init.UploadId };
+            done.AddPartETags(parts);
+            await client.CompleteMultipartUploadAsync(done, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            try
+            {
+                await client.AbortMultipartUploadAsync(new AbortMultipartUploadRequest
+                    { BucketName = destBucket, Key = destKey, UploadId = init.UploadId }).ConfigureAwait(false);
+            }
+            catch { /* ignore */ }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Copy between different accounts / endpoints: download to a temp file, then upload it
+    /// (multipart for large files). Content-Type and user metadata are preserved.
+    /// </summary>
+    public static async Task CopyViaLocalAsync(IAmazonS3 srcClient, string srcBucket, string srcKey,
+        IAmazonS3 destClient, string destBucket, string destKey, string tempDir, CancellationToken ct)
+    {
+        Directory.CreateDirectory(tempDir);
+        var tmp = Path.Combine(tempDir, Guid.NewGuid().ToString("N") + ".part");
+        try
+        {
+            var up = new TransferUtilityUploadRequest { FilePath = tmp, BucketName = destBucket, Key = destKey };
+            using (var resp = await srcClient.GetObjectAsync(srcBucket, srcKey, ct).ConfigureAwait(false))
+            {
+                up.ContentType = resp.Headers.ContentType;
+                foreach (var k in resp.Metadata.Keys) up.Metadata[k] = resp.Metadata[k];
+                await using var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
+                await resp.ResponseStream.CopyToAsync(fs, 81920, ct).ConfigureAwait(false);
+            }
+
+            using var tu = new TransferUtility(destClient);
+            await tu.UploadAsync(up, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { /* ignore */ }
         }
     }
 

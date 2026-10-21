@@ -23,6 +23,7 @@ Requirements: Windows, .NET 8 SDK.
 - Sort by column, filter by name, Back / Up, Enter opens a folder, Backspace goes up a level.
 - Double-click a file (or the ⬇ button) to download it to the Downloads folder; right-click → "Download to another folder…". Folders are downloaded recursively, preserving structure. Downloads run 4 files in parallel and never overwrite existing files (a " (1)" suffix is added automatically).
 - 🗑 button / Delete key / right-click → "Delete from S3…": permanently deletes a file or an entire folder (with a confirmation dialog). The cache is updated immediately, no rescan needed.
+- Right-click → "Copy to another bucket…" / "Move to another bucket…": copy or move files/folders to another connection (bucket + optional folder). Same endpoint + same access key → server-side `CopyObject` (multipart copy for objects > 5 GB, no data passes through your machine); otherwise each object is downloaded to a temp file and uploaded. Existing files at the destination are skipped unless "Overwrite" is ticked. Move deletes a source only after it was copied; folders with skipped/failed files keep their source. Caches of both connections are updated immediately.
 - Right-click: copy name / key / `s3://` URI.
 
 ## Storage
@@ -48,11 +49,12 @@ Services/ShellInfo.cs     type name + icon by file extension (SHGetFileInfo)
 Services/Crypto.cs        DPAPI
 MainWindow.xaml(.cs)      main window
 ProfileDialog.xaml(.cs)   add/edit profile
+TransferDialog.xaml(.cs)  choose destination for copy / move
 ```
 
 ## Minimum IAM permissions
 
-View only: `s3:ListBucket`. Download: add `s3:GetObject`. Delete: add `s3:DeleteObject`.
+View only: `s3:ListBucket`. Download: add `s3:GetObject`. Delete: add `s3:DeleteObject`. Copy / move: `s3:GetObject` on the source, `s3:PutObject` (+ `s3:ListBucket` to skip existing files) on the destination; move also needs `s3:DeleteObject` on the source.
 
 ```json
 [

@@ -7,6 +7,9 @@
         Foreground="{StaticResource TextBrush}"
         TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
         WindowStartupLocation="CenterScreen" Closing="Window_Closing" KeyDown="Window_KeyDown">
+    <Window.Resources>
+        <svc:GroupExpandedConverter x:Key="GroupExpanded" />
+    </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="270" MinWidth="200" />
@@ -32,6 +35,58 @@
                          Background="Transparent" BorderThickness="0" Padding="0"
                          ItemContainerStyle="{StaticResource SidebarItem}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <!-- Grouped by provider domain; click a header to collapse / expand (remembered) -->
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.ContainerStyle>
+                                <Style TargetType="GroupItem">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="GroupItem">
+                                                <StackPanel>
+                                                    <ToggleButton x:Name="Toggle" Margin="0,6,0,1" Cursor="Hand" Focusable="False"
+                                                                  Tag="{Binding Name}" ToolTip="{Binding Name}"
+                                                                  IsChecked="{Binding Name, Mode=OneTime, Converter={StaticResource GroupExpanded}}"
+                                                                  Checked="Group_Toggled" Unchecked="Group_Toggled">
+                                                        <ToggleButton.Template>
+                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                <Border x:Name="Bd" Background="Transparent" CornerRadius="6" Padding="6,4,8,4">
+                                                                    <ContentPresenter />
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="Bd" Property="Background" Value="#E8E8EC" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </ToggleButton.Template>
+                                                        <DockPanel>
+                                                            <TextBlock x:Name="Chevron" DockPanel.Dock="Left" Text="&#xE70D;" Width="14"
+                                                                       FontFamily="{StaticResource IconFont}" FontSize="9"
+                                                                       Foreground="{StaticResource TertiaryBrush}" VerticalAlignment="Center" />
+                                                            <TextBlock DockPanel.Dock="Left" Text="&#xE968;" FontFamily="{StaticResource IconFont}" FontSize="11"
+                                                                       Foreground="{StaticResource TertiaryBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                                            <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount}" FontSize="11"
+                                                                       Foreground="{StaticResource TertiaryBrush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                                            <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                                       Foreground="{StaticResource SecondaryBrush}" VerticalAlignment="Center" />
+                                                        </DockPanel>
+                                                    </ToggleButton>
+                                                    <ItemsPresenter x:Name="Items" />
+                                                </StackPanel>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger SourceName="Toggle" Property="IsChecked" Value="False">
+                                                        <Setter TargetName="Items" Property="Visibility" Value="Collapsed" />
+                                                        <Setter TargetName="Chevron" Property="Text" Value="&#xE76C;" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </GroupStyle.ContainerStyle>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid ToolTip="{Binding Display}">
@@ -215,6 +270,9 @@
                             <MenuItem x:Name="RevealLocalMenu" Header="Show downloaded file in folder" Click="RevealLocal_Click" />
                             <MenuItem Header="Download to Downloads" Click="Download_Click" />
                             <MenuItem Header="Download to another folder…" Click="DownloadTo_Click" />
+                            <Separator />
+                            <MenuItem Header="Copy to another bucket…" Click="CopyTo_Click" />
+                            <MenuItem Header="Move to another bucket…" Click="MoveTo_Click" />
                             <Separator />
                             <MenuItem Header="Copy name" Click="CopyName_Click" />
                             <MenuItem Header="Copy key" Click="CopyKey_Click" />
