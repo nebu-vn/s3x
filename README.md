@@ -1,9 +1,17 @@
-<img width="1659" height="965" alt="image" src="https://github.com/user-attachments/assets/a645c8ad-dac9-4929-9f22-5732395262ef" />
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/d29dd4cf-61d6-49cc-b384-be9143a2fa7c" width="256" />
+</p>
+
+
+
 
 
 # S3 Explorer (WPF, .NET 8)
 
 A Windows Explorer-style S3 metadata browser. Browse object listings (name, size, type, date modified, storage class) from a local cache; download files/folders to your machine and delete files/folders on S3.
+
+<img width="1659" height="965" alt="image" src="https://github.com/user-attachments/assets/a645c8ad-dac9-4929-9f22-5732395262ef" />
 
 ## Running
 
