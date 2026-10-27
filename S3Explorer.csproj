@@ -9,7 +9,12 @@
     <RootNamespace>S3Explorer</RootNamespace>
     <AssemblyName>S3Explorer</AssemblyName>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="3.7.*" />

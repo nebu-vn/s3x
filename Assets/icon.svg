@@ -1,0 +1,54 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer App Background Canvas -->
+  <rect width="512" height="512" rx="112" fill="url(#bg-grad)" />
+
+  <!-- Minimalist Square Frame (Container/Bucket) -->
+  <rect x="96" y="80" width="320" height="320" rx="56" stroke="url(#frame-orange)" stroke-width="16" fill="url(#inner-bg)" />
+
+  <!-- Minimalist 'X' Symbol -->
+  <path d="M180 164 L332 316" stroke="url(#x-grad-orange)" stroke-width="36" stroke-linecap="round" />
+  <path d="M332 164 L180 316" stroke="url(#x-grad-blue)" stroke-width="36" stroke-linecap="round" />
+
+  <!-- Extra Large "S3" Pill Badge at Bottom -->
+  <rect x="146" y="362" width="220" height="76" rx="38" fill="url(#s3-badge-grad)" />
+  <text x="256" y="416" font-family="-apple-system, BlinkMacSystemFont, &#39;Segoe UI&#39;, Roboto, sans-serif" font-weight="900" font-size="44" fill="#0F172A" text-anchor="middle" letter-spacing="3">S3</text>
+
+  <!-- Gradients Definition -->
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A" />
+      <stop offset="1" stop-color="#020617" />
+    </linearGradient>
+
+    <!-- Inner Square Fill -->
+    <linearGradient id="inner-bg" x1="96" y1="80" x2="416" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E293B" stop-opacity="0.5" />
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0.8" />
+    </linearGradient>
+
+    <!-- S3 Badge Gradient -->
+    <linearGradient id="s3-badge-grad" x1="146" y1="362" x2="366" y2="438" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB800" />
+      <stop offset="1" stop-color="#FF8800" />
+    </linearGradient>
+
+    <!-- Orange Frame Gradient -->
+    <linearGradient id="frame-orange" x1="96" y1="80" x2="416" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF9900" />
+      <stop offset="1" stop-color="#FF5500" />
+    </linearGradient>
+
+    <!-- X Gradient - Arm 1 (S3 Orange) -->
+    <linearGradient id="x-grad-orange" x1="180" y1="164" x2="332" y2="316" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB800" />
+      <stop offset="1" stop-color="#FF4500" />
+    </linearGradient>
+
+    <!-- X Gradient - Arm 2 (Tech Cyan Blue) -->
+    <linearGradient id="x-grad-blue" x1="332" y1="164" x2="180" y2="332" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8" />
+      <stop offset="1" stop-color="#0284C7" />
+    </linearGradient>
+  </defs>
+</svg>
