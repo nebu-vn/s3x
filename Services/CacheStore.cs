@@ -70,6 +70,19 @@ public sealed class CacheStore
                 last_modified INTEGER NOT NULL,
                 downloaded_at INTEGER NOT NULL,
                 PRIMARY KEY(profile_id, key)) WITHOUT ROWID;
+
+            -- objects of a scan in progress, moved into `objects` on commit
+            CREATE TABLE IF NOT EXISTS scan_staging(
+                scan_id       TEXT    NOT NULL,
+                key           TEXT    NOT NULL,
+                parent        TEXT    NOT NULL,
+                name          TEXT    NOT NULL,
+                ext           TEXT    NOT NULL,
+                size          INTEGER NOT NULL,
+                last_modified INTEGER NOT NULL,
+                storage_class TEXT,
+                PRIMARY KEY(scan_id, key)) WITHOUT ROWID;
+            DELETE FROM scan_staging;   -- leftovers of a scan interrupted by a crash
             """);
     }
 
@@ -77,7 +90,8 @@ public sealed class CacheStore
     {
         var c = new SqliteConnection(_cs);
         c.Open();
-        Exec(c, null, "PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;");
+        // several scans / transfers may write at once; a scan commit can hold the write lock for a few seconds
+        Exec(c, null, "PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=60000;");
         return c;
     }
 
@@ -454,6 +468,7 @@ public sealed class CacheStore
     /// <summary>
     /// Begin replacing a profile's cache. Old data can still be read normally
     /// until Commit; on cancel/error (Dispose without Commit) the old cache stays intact.
+    /// Objects are staged in short batches, so other scans / transfers can write to the cache meanwhile.
     /// </summary>
     public ReplaceSession BeginReplace(string profileId) => new(Open(), profileId);
 
@@ -461,11 +476,15 @@ public sealed class CacheStore
     {
         private sealed class Agg { public long Count, Size, MaxTicks; }
 
+        private const int BatchSize = 2000;
+
         private readonly SqliteConnection _conn;
-        private readonly SqliteTransaction _tx;
+        private SqliteTransaction? _tx;                   // current staging batch
+        private int _pending;
         private readonly SqliteCommand _ins;
         private readonly SqliteParameter _pKey, _pParent, _pName, _pExt, _pSize, _pMod, _pClass;
         private readonly string _profileId;
+        private readonly string _scanId = Guid.NewGuid().ToString("N");
         private readonly Dictionary<string, Agg> _folders = new(StringComparer.Ordinal) { [""] = new Agg() };
         private bool _done;
 
@@ -476,17 +495,13 @@ public sealed class CacheStore
         {
             _conn = conn;
             _profileId = profileId;
-            _tx = conn.BeginTransaction();
-            Exec(conn, _tx, "DELETE FROM objects WHERE profile_id=$p", profileId);
-            Exec(conn, _tx, "DELETE FROM folders WHERE profile_id=$p", profileId);
 
             _ins = conn.CreateCommand();
-            _ins.Transaction = _tx;
             _ins.CommandText = """
-                INSERT OR REPLACE INTO objects(profile_id, key, parent, name, ext, size, last_modified, storage_class)
-                VALUES($p, $k, $parent, $name, $ext, $size, $mod, $class)
+                INSERT OR REPLACE INTO scan_staging(scan_id, key, parent, name, ext, size, last_modified, storage_class)
+                VALUES($s, $k, $parent, $name, $ext, $size, $mod, $class)
                 """;
-            _ins.Parameters.AddWithValue("$p", profileId);
+            _ins.Parameters.AddWithValue("$s", _scanId);
             _pKey = _ins.Parameters.Add("$k", SqliteType.Text);
             _pParent = _ins.Parameters.Add("$parent", SqliteType.Text);
             _pName = _ins.Parameters.Add("$name", SqliteType.Text);
@@ -494,7 +509,14 @@ public sealed class CacheStore
             _pSize = _ins.Parameters.Add("$size", SqliteType.Integer);
             _pMod = _ins.Parameters.Add("$mod", SqliteType.Integer);
             _pClass = _ins.Parameters.Add("$class", SqliteType.Text);
-            _ins.Prepare();
+        }
+
+        private void Flush()
+        {
+            _tx?.Commit();
+            _tx?.Dispose();
+            _tx = null;
+            _pending = 0;
         }
 
         public void Add(string rel, long size, long ticksUtc, string? storageClass)
@@ -528,7 +550,13 @@ public sealed class CacheStore
             _pSize.Value = size;
             _pMod.Value = ticksUtc;
             _pClass.Value = (object?)storageClass ?? DBNull.Value;
+            if (_tx == null)
+            {
+                _tx = _conn.BeginTransaction();
+                _ins.Transaction = _tx;
+            }
             _ins.ExecuteNonQuery();
+            if (++_pending >= BatchSize) Flush();
 
             FileCount++;
             TotalBytes += size;
@@ -536,9 +564,27 @@ public sealed class CacheStore
 
         public ScanInfo Commit(long durationMs)
         {
+            Flush();
+            // Swap the staged objects in with one short write transaction
+            using var tx = _conn.BeginTransaction();
+            Exec(_conn, tx, "DELETE FROM objects WHERE profile_id=$p", _profileId);
+            Exec(_conn, tx, "DELETE FROM folders WHERE profile_id=$p", _profileId);
             using (var cmd = _conn.CreateCommand())
             {
-                cmd.Transaction = _tx;
+                cmd.Transaction = tx;
+                cmd.CommandText = """
+                    INSERT OR REPLACE INTO objects(profile_id, key, parent, name, ext, size, last_modified, storage_class)
+                    SELECT $p, key, parent, name, ext, size, last_modified, storage_class FROM scan_staging WHERE scan_id=$s;
+                    DELETE FROM scan_staging WHERE scan_id=$s;
+                    """;
+                cmd.Parameters.AddWithValue("$p", _profileId);
+                cmd.Parameters.AddWithValue("$s", _scanId);
+                cmd.ExecuteNonQuery();
+            }
+
+            using (var cmd = _conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
                 cmd.CommandText = """
                     INSERT INTO folders(profile_id, path, parent, name, file_count, total_size, last_modified)
                     VALUES($p, $path, $parent, $name, $count, $size, $mod)
@@ -567,7 +613,7 @@ public sealed class CacheStore
             var info = new ScanInfo(DateTime.UtcNow, FileCount, TotalBytes, _folders.Count - 1, durationMs);
             using (var cmd = _conn.CreateCommand())
             {
-                cmd.Transaction = _tx;
+                cmd.Transaction = tx;
                 cmd.CommandText = """
                     INSERT OR REPLACE INTO scans(profile_id, scanned_at, file_count, total_size, folder_count, duration_ms)
                     VALUES($p, $at, $files, $size, $folders, $ms)
@@ -581,7 +627,7 @@ public sealed class CacheStore
                 cmd.ExecuteNonQuery();
             }
 
-            _tx.Commit();
+            tx.Commit();
             _done = true;
             return info;
         }
@@ -590,10 +636,18 @@ public sealed class CacheStore
         {
             if (!_done)
             {
-                try { _tx.Rollback(); } catch { /* already closed */ }
+                try { _tx?.Rollback(); } catch { /* already closed */ }
+                try
+                {
+                    using var cmd = _conn.CreateCommand();
+                    cmd.CommandText = "DELETE FROM scan_staging WHERE scan_id=$s";
+                    cmd.Parameters.AddWithValue("$s", _scanId);
+                    cmd.ExecuteNonQuery();
+                }
+                catch { /* cleared on next start */ }
             }
             _ins.Dispose();
-            _tx.Dispose();
+            _tx?.Dispose();
             _conn.Dispose();
         }
 

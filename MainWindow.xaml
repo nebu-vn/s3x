@@ -137,7 +137,6 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Button x:Name="BackButton" Grid.Column="0" Style="{StaticResource ToolButton}" Content="&#xE76B;" FontSize="12"
                             ToolTip="Back (Alt+←)" Click="Back_Click" />
@@ -188,18 +187,26 @@
                             <TextBlock Text="Rescan" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
-                    <Button x:Name="CancelScanButton" Grid.Column="7" Content="Cancel" Margin="6,0,0,0" Visibility="Collapsed" Click="CancelScan_Click" />
                 </Grid>
             </Border>
 
-            <!-- Scan progress -->
-            <Border x:Name="ProgressPanel" DockPanel.Dock="Top" Background="#F2F7FF" Padding="12,7"
+            <!-- Running tasks (scan / download / delete / copy), one row each -->
+            <Border x:Name="ProgressPanel" DockPanel.Dock="Top" Background="#F2F7FF" Padding="12,3"
                     BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Visibility="Collapsed">
-                <DockPanel>
-                    <ProgressBar IsIndeterminate="True" Width="120" Height="4" DockPanel.Dock="Left" VerticalAlignment="Center"
-                                 Foreground="{StaticResource AccentBrush}" Background="#DCE6F5" BorderThickness="0" />
-                    <TextBlock x:Name="ProgressText" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource SecondaryBrush}" />
-                </DockPanel>
+                <ItemsControl x:Name="TaskList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,2">
+                                <ProgressBar IsIndeterminate="True" Width="120" Height="4" DockPanel.Dock="Left" VerticalAlignment="Center"
+                                             Foreground="{StaticResource AccentBrush}" Background="#DCE6F5" BorderThickness="0" />
+                                <Button DockPanel.Dock="Right" Content="Cancel" MinHeight="24" Padding="10,2" Margin="8,0,0,0"
+                                        Click="CancelTask_Click" />
+                                <TextBlock Text="{Binding Text}" ToolTip="{Binding Text}" Margin="10,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource SecondaryBrush}" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </Border>
 
             <!-- Notice after download / delete -->

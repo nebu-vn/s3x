@@ -27,16 +27,15 @@ public partial class MainWindow : Window
     private string _sortKey = "Name";
     private bool _sortAsc = true;
 
-    private CancellationTokenSource? _opCts;          // download / delete
     private string? _noticePath;                        // file/folder for "Show in folder"
-    private bool IsBusy => _scanCts != null || _opCts != null;
 
-    private CancellationTokenSource? _scanCts;
-    private S3Profile? _scanning;
+    // Running scans / downloads / deletes / copies; they run side by side, one at a time per profile
+    private readonly ObservableCollection<BackgroundTask> _tasks = new();
 
     public MainWindow()
     {
         InitializeComponent();
+        TaskList.ItemsSource = _tasks;
 
         foreach (var p in _profileStore.Load())
         {
@@ -72,9 +71,9 @@ public partial class MainWindow : Window
     private void EditProfile_Click(object sender, RoutedEventArgs e)
     {
         if (ProfileList.SelectedItem is not S3Profile p) return;
-        if (_scanning?.Id == p.Id)
+        if (IsBusy(p))
         {
-            MessageBox.Show(this, "This profile is being scanned. Cancel the scan before editing it.", "S3 Explorer");
+            MessageBox.Show(this, "This profile has an operation running. Wait for it or cancel it before editing.", "S3 Explorer");
             return;
         }
 
@@ -102,9 +101,9 @@ public partial class MainWindow : Window
     private void DeleteProfile_Click(object sender, RoutedEventArgs e)
     {
         if (ProfileList.SelectedItem is not S3Profile p) return;
-        if (_scanning?.Id == p.Id)
+        if (IsBusy(p))
         {
-            MessageBox.Show(this, "This profile is being scanned. Cancel the scan before deleting it.", "S3 Explorer");
+            MessageBox.Show(this, "This profile has an operation running. Wait for it or cancel it before deleting.", "S3 Explorer");
             return;
         }
         if (MessageBox.Show(this, $"Delete profile \"{p.Name}\" and its cache?\n(Data on S3 is not affected)",
@@ -155,15 +154,45 @@ public partial class MainWindow : Window
         SetPath("");
         FolderStatus.Text = SelectionStatus.Text = CacheStatus.Text = "";
 
-        if (_scanCts != null)
+        if (IsBusy(p))
         {
-            ShowEmpty($"No cached data for \"{p.Name}\" yet.\nScanning \"{_scanning?.Name}\" — click \"Rescan\" when it finishes.");
+            ShowEmpty($"No cached data for \"{p.Name}\" yet.\nAnother operation on it is running — wait for it to finish.");
             return;
         }
 
         ShowEmpty("Loading listing for the first time…");
         await ScanAsync(p);
     }
+
+    // ===================== Background tasks =====================
+
+    private bool IsBusy(S3Profile p) => _tasks.Any(t => t.ProfileIds.Contains(p.Id));
+
+    /// <summary>Claim the profiles and show a progress row; null if one of them is busy.</summary>
+    private BackgroundTask? StartTask(string text, params S3Profile[] profiles)
+    {
+        if (profiles.Any(IsBusy)) return null;
+        var t = new BackgroundTask(text, profiles.Select(p => p.Id).Distinct().ToList());
+        _tasks.Add(t);
+        ProgressPanel.Visibility = Visibility.Visible;
+        UpdateButtons();
+        return t;
+    }
+
+    private void EndTask(BackgroundTask t)
+    {
+        _tasks.Remove(t);
+        t.Dispose();
+        if (_tasks.Count == 0) ProgressPanel.Visibility = Visibility.Collapsed;
+        UpdateButtons();
+    }
+
+    private void CancelTask_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: BackgroundTask t }) t.Cts.Cancel();
+    }
+
+    private const string BusyNotice = "An operation on this bucket is already running — wait for it or click its Cancel.";
 
     // ===================== S3 scan =====================
 
@@ -172,23 +201,17 @@ public partial class MainWindow : Window
         if (_current != null) await ScanAsync(_current);
     }
 
-    private void CancelScan_Click(object sender, RoutedEventArgs e) { _scanCts?.Cancel(); _opCts?.Cancel(); }
-
     private async Task ScanAsync(S3Profile p)
     {
-        if (IsBusy) return;
-
-        _scanCts = new CancellationTokenSource();
-        _scanning = p;
-        SetScanning(true);
-        ProgressText.Text = $"Scanning {p.Name}…";
+        var task = StartTask($"Scanning {p.Name}…", p);
+        if (task == null) return;
 
         var progress = new Progress<ScanProgress>(sp =>
-            ProgressText.Text = $"Scanning {p.Name}: {sp.Files:N0} files · {FormatUtil.Size(sp.Bytes)}");
+            task.Text = $"Scanning {p.Name}: {sp.Files:N0} files · {FormatUtil.Size(sp.Bytes)}");
 
         try
         {
-            var token = _scanCts.Token;
+            var token = task.Token;
             var info = await Task.Run(() => Scanner.ScanAsync(p, _cache, progress, token));
             SetSummary(p, info);
             ProfileList.Items.Refresh();
@@ -213,18 +236,8 @@ public partial class MainWindow : Window
         }
         finally
         {
-            _scanCts.Dispose();
-            _scanCts = null;
-            _scanning = null;
-            SetScanning(false);
+            EndTask(task);
         }
-    }
-
-    private void SetScanning(bool on)
-    {
-        ProgressPanel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        CancelScanButton.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        UpdateButtons();
     }
 
     // ===================== Explorer view =====================
@@ -466,22 +479,20 @@ public partial class MainWindow : Window
     private async Task DownloadAsync(IReadOnlyList<S3Entry> items, string destDir)
     {
         if (_current == null || items.Count == 0) return;
-        if (IsBusy) { ShowNotice("Another operation is running — please wait or click Cancel.", null, error: true); return; }
 
         var p = _current;
+        var task = StartTask($"Preparing download from {p.Name}…", p);
+        if (task == null) { ShowNotice(BusyNotice, null, error: true); return; }
         var bucket = p.Bucket.Trim();
         var prefix = p.NormalizedPrefix;
-        _opCts = new CancellationTokenSource();
-        var ct = _opCts.Token;
+        var ct = task.Token;
         HideNotice();
-        ProgressText.Text = "Preparing download…";
-        SetScanning(true);
 
         long doneBytes = 0, totalBytes = 0;
         int doneFiles = 0, totalFiles = 0;
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        timer.Tick += (_, _) => ProgressText.Text = totalFiles == 0 ? "Listing files…" :
-            $"Downloading {Volatile.Read(ref doneFiles):N0}/{totalFiles:N0} files · " +
+        timer.Tick += (_, _) => task.Text = totalFiles == 0 ? $"Listing files in {p.Name}…" :
+            $"Downloading {Volatile.Read(ref doneFiles):N0}/{totalFiles:N0} files from {p.Name} · " +
             $"{FormatUtil.Size(Interlocked.Read(ref doneBytes))} / {FormatUtil.Size(totalBytes)}";
         timer.Start();
 
@@ -549,9 +560,7 @@ public partial class MainWindow : Window
         finally
         {
             timer.Stop();
-            _opCts.Dispose();
-            _opCts = null;
-            SetScanning(false);
+            EndTask(task);
             MarkDownloaded(p, downloaded.ToList());
         }
     }
@@ -575,7 +584,7 @@ public partial class MainWindow : Window
         if (_current == null) return;
         var items = SelectedEntries();
         if (items.Count == 0) return;
-        if (IsBusy) { ShowNotice("Another operation is running — please wait or click Cancel.", null, error: true); return; }
+        if (IsBusy(_current)) { ShowNotice(BusyNotice, null, error: true); return; }
 
         long size = items.Sum(x => x.Size);
         string what = Describe(items);
@@ -585,17 +594,16 @@ public partial class MainWindow : Window
             return;
 
         var p = _current;
+        var task = StartTask($"Listing objects to delete in {p.Name}…", p);
+        if (task == null) { ShowNotice(BusyNotice, null, error: true); return; }
         var bucket = p.Bucket.Trim();
         var prefix = p.NormalizedPrefix;
-        _opCts = new CancellationTokenSource();
-        var ct = _opCts.Token;
+        var ct = task.Token;
         HideNotice();
-        ProgressText.Text = "Listing objects to delete…";
-        SetScanning(true);
 
         int deleted = 0, total = 0;
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        timer.Tick += (_, _) => { if (total > 0) ProgressText.Text = $"Deleting {Volatile.Read(ref deleted):N0}/{total:N0} objects…"; };
+        timer.Tick += (_, _) => { if (total > 0) task.Text = $"Deleting {Volatile.Read(ref deleted):N0}/{total:N0} objects from {p.Name}…"; };
         timer.Start();
 
         try
@@ -642,9 +650,7 @@ public partial class MainWindow : Window
         finally
         {
             timer.Stop();
-            _opCts.Dispose();
-            _opCts = null;
-            SetScanning(false);
+            EndTask(task);
             SetSummary(p, _cache.GetScanInfo(p.Id));
             ProfileList.Items.Refresh();
             if (_current?.Id == p.Id)
@@ -670,7 +676,7 @@ public partial class MainWindow : Window
     private void MoveTo_Click(object sender, RoutedEventArgs e) => _ = TransferSelectedAsync(move: true);
 
     /// <summary>One object to copy; Item = index of the selected entry it belongs to.</summary>
-    private sealed record TransferJob(string SrcKey, string DestKey, long Size, int Item)
+    private sealed record TransferJob(string SrcKey, string DestKey, long Size, long ModifiedTicks, int Item)
     {
         public bool IsMarker => SrcKey.EndsWith('/');
     }
@@ -704,13 +710,16 @@ public partial class MainWindow : Window
         if (_current == null) return;
         var items = SelectedEntries();
         if (items.Count == 0) return;
-        if (IsBusy) { ShowNotice("Another operation is running — please wait or click Cancel.", null, error: true); return; }
+        if (IsBusy(_current)) { ShowNotice(BusyNotice, null, error: true); return; }
 
         var src = _current;
         var dlg = new TransferDialog(move,
             $"{(move ? "Move" : "Copy")} {Describe(items)} — {FormatUtil.Size(items.Sum(x => x.Size))}",
             $"s3://{src.Bucket.Trim()}/{src.NormalizedPrefix}{_currentPath}",
-            _profiles, src, _currentPath, (d, f) => CheckDestination(src, items, d, f)) { Owner = this };
+            _profiles, src, _currentPath,
+            (d, f) => d.Id != src.Id && IsBusy(d)
+                ? "The destination connection has an operation running (scan / copy…). Wait for it to finish."
+                : CheckDestination(src, items, d, f)) { Owner = this };
         if (dlg.ShowDialog() != true || dlg.Destination == null) return;
 
         var dest = dlg.Destination;
@@ -725,16 +734,16 @@ public partial class MainWindow : Window
         var tempDir = Path.Combine(Path.GetTempPath(), "S3Explorer");
         string ing = move ? "Moving" : "Copying";
 
-        _opCts = new CancellationTokenSource();
-        var ct = _opCts.Token;
+        // src or dest may have become busy while the dialog was open
+        var task = StartTask($"Listing objects in {src.Name}…", src, dest);
+        if (task == null) { ShowNotice(BusyNotice, null, error: true); return; }
+        var ct = task.Token;
         HideNotice();
-        ProgressText.Text = "Listing objects…";
-        SetScanning(true);
 
         long doneBytes = 0, totalBytes = 0;
         int doneFiles = 0, totalFiles = 0, skipped = 0;
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        timer.Tick += (_, _) => ProgressText.Text = totalFiles == 0 ? "Listing objects…" :
+        timer.Tick += (_, _) => task.Text = totalFiles == 0 ? $"Listing objects in {src.Name}…" :
             $"{ing} {Volatile.Read(ref doneFiles):N0}/{totalFiles:N0} files · " +
             $"{FormatUtil.Size(Interlocked.Read(ref doneBytes))} / {FormatUtil.Size(totalBytes)} → {destUri}";
         timer.Start();
@@ -748,6 +757,7 @@ public partial class MainWindow : Window
                 using var srcClient = S3Service.CreateClient(src);
                 using var destClient = S3Service.CreateClient(dest);
 
+                // List the sources on S3 again (not from the cache) so the latest objects / sizes are transferred
                 var jobs = new List<TransferJob>();
                 var existing = new HashSet<string>(StringComparer.Ordinal);
                 for (int i = 0; i < items.Count; i++)
@@ -756,11 +766,21 @@ public partial class MainWindow : Window
                     var srcKey = srcPrefix + en.RelativePath;
                     var destKey = destPrefix + LeafName(en);
                     if (!en.IsFolder)
-                        jobs.Add(new TransferJob(srcKey, destKey, en.Size, i));
+                    {
+                        // keys are listed in order, so an exact match is the first one
+                        S3ObjectInfo? o = null;
+                        await foreach (var page in S3Service.ListAllAsync(srcClient, srcBucket, srcKey, ct))
+                        {
+                            o = page.FirstOrDefault(x => x.Key == srcKey);
+                            break;
+                        }
+                        if (o == null) { errors.Add($"{srcKey}: no longer exists on S3"); continue; }
+                        jobs.Add(new TransferJob(srcKey, destKey, o.Size, o.LastModifiedTicksUtc, i));
+                    }
                     else
                         await foreach (var page in S3Service.ListAllAsync(srcClient, srcBucket, srcKey, ct))
                             foreach (var o in page)
-                                jobs.Add(new TransferJob(o.Key, destKey + o.Key[srcKey.Length..], o.Size, i));
+                                jobs.Add(new TransferJob(o.Key, destKey + o.Key[srcKey.Length..], o.Size, o.LastModifiedTicksUtc, i));
 
                     if (!overwrite)
                         await foreach (var page in S3Service.ListAllAsync(destClient, destBucket, destKey, ct))
@@ -776,6 +796,8 @@ public partial class MainWindow : Window
                     else if (j.IsMarker) copied.Add(j);
                     else skipped++;
                 }
+                // Newest objects first (Parallel.ForEachAsync takes them in list order)
+                todo.Sort((a, b) => b.ModifiedTicks.CompareTo(a.ModifiedTicks));
                 totalBytes = todo.Where(j => !j.IsMarker).Sum(j => j.Size);
                 Volatile.Write(ref totalFiles, todo.Count(j => !j.IsMarker));
 
@@ -857,9 +879,7 @@ public partial class MainWindow : Window
         finally
         {
             timer.Stop();
-            _opCts.Dispose();
-            _opCts = null;
-            SetScanning(false);
+            EndTask(task);
             SetSummary(src, _cache.GetScanInfo(src.Id));
             SetSummary(dest, _cache.GetScanInfo(dest.Id));
             ProfileList.Items.Refresh();
@@ -868,6 +888,10 @@ public partial class MainWindow : Window
                 var path = _currentPath.Length == 0 || _cache.GetFolder(_current.Id, _currentPath) != null ? _currentPath : "";
                 ShowFolder(path, push: false);
             }
+
+            // Rescan src / dest so their listings show what is on S3 now, not just the cache patch above
+            await Task.WhenAll(new[] { src, dest }.DistinctBy(p => p.Id)
+                .Where(p => _cache.GetScanInfo(p.Id) != null).Select(ScanAsync));
         }
     }
 
@@ -998,8 +1022,9 @@ public partial class MainWindow : Window
     {
         bool has = ProfileList.SelectedItem != null;
         EditButton.IsEnabled = DeleteButton.IsEnabled = has;
-        RescanButton.IsEnabled = has && !IsBusy;
-        bool sel = FileList.SelectedItems.Count > 0 && !IsBusy;
+        bool busy = _current != null && IsBusy(_current);
+        RescanButton.IsEnabled = has && !busy;
+        bool sel = FileList.SelectedItems.Count > 0 && !busy;
         DownloadFileButton.IsEnabled = DeleteFileButton.IsEnabled = sel;
         BackButton.IsEnabled = _back.Count > 0;
         UpButton.IsEnabled = _currentPath.Length > 0;
@@ -1011,7 +1036,10 @@ public partial class MainWindow : Window
         p.ScanTime = s == null ? "" : s.ScannedAtUtc.ToLocalTime().ToString("dd/MM HH:mm");
     }
 
-    private void Window_Closing(object? sender, CancelEventArgs e) { _scanCts?.Cancel(); _opCts?.Cancel(); }
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        foreach (var t in _tasks) t.Cts.Cancel();
+    }
 
     /// <summary>Folders always come first; names compare Explorer-style.</summary>
     private sealed class EntryComparer : IComparer
